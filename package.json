@@ -1,107 +1,137 @@
 {
-  "name": "inherit-profile",
-  "version": "0.5.5",
-  "displayName": "Inherit Profile",
-  "description": "Profile inheritance for VS Code.",
-  "icon": "branding/icon_128.png",
-  "publisher": "alexthomson",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/alexjthomson/inherit-profile"
-  },
-  "license": "MIT",
-  "engines": {
-    "vscode": "^1.103.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "keywords": [
-    "profile",
-    "profiles",
-    "setting",
-    "settings",
-    "settings sync",
-    "sync",
-    "inheritance",
-    "inherit",
-    "configuration",
-    "config",
-    "configs",
-    "workspace"
-  ],
-  "homepage": "https://github.com/alexjthomson/inherit-profile#readme",
-  "bugs": {
-    "url": "https://github.com/alexjthomson/inherit-profile/issues"
-  },
-  "galleryBanner": {
-    "color": "#1e1e1e",
-    "theme": "dark"
-  },
-  "activationEvents": [
-    "onStartupFinished"
-  ],
-  "main": "./out/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "inherit-profile.applyInheritanceToCurrentProfile",
-        "title": "Apply Profile Inheritance (Current Profile)",
-        "icon": "combine"
-      },
-      {
-        "command": "inherit-profile.removeInheritedSettingsFromCurrentProfile",
-        "title": "Remove Inherited Settings (Current Profile)",
-        "icon": "clear-all"
-      }
-    ],
-    "configuration": {
-      "title": "Inherit Profile",
-      "properties": {
-        "inheritProfile.parents": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Names of the profiles to inherit settings from."
-        },
-        "inheritProfile.runOnStartup": {
-          "type": "boolean",
-          "default": true,
-          "description": "Updates the inherited settings when extension starts."
-        },
-        "inheritProfile.runOnProfileChange": {
-          "type": "boolean",
-          "default": true,
-          "description": "Updates the inherited settings when the current profile is changed."
-        },
-        "inheritProfile.showMessages": {
-          "type": "boolean",
-          "default": false,
-          "description": "Shows a message when settings are inherited or removed."
-        }
-      }
-    }
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && biome check",
-    "test": "vscode-test",
-    "unit-test": "mocha -r ts-node/register src/test/**/*.test.ts"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "2.3.11",
-    "@types/node": "25.0.3",
-    "@types/vscode": "^1.103.0",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
-  },
-  "dependencies": {
-    "jsonc-parser": "^3.3.1"
-  }
+	"name": "inherit-profile",
+	"version": "0.5.5",
+	"displayName": "Inherit Profile",
+	"description": "Profile inheritance for VS Code.",
+	"icon": "branding/icon_128.png",
+	"publisher": "alexthomson",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/alexjthomson/inherit-profile"
+	},
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.103.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"keywords": [
+		"profile",
+		"profiles",
+		"setting",
+		"settings",
+		"settings sync",
+		"sync",
+		"inheritance",
+		"inherit",
+		"configuration",
+		"config",
+		"configs",
+		"workspace"
+	],
+	"homepage": "https://github.com/alexjthomson/inherit-profile#readme",
+	"bugs": {
+		"url": "https://github.com/alexjthomson/inherit-profile/issues"
+	},
+	"galleryBanner": {
+		"color": "#1e1e1e",
+		"theme": "dark"
+	},
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "inherit-profile.applyInheritanceToCurrentProfile",
+				"title": "Apply Profile Inheritance (Current Profile)",
+				"icon": "combine"
+			},
+			{
+				"command": "inherit-profile.removeInheritedSettingsFromCurrentProfile",
+				"title": "Remove Inherited Settings (Current Profile)",
+				"icon": "clear-all"
+			}
+		],
+		"configuration": {
+			"title": "Inherit Profile",
+			"properties": {
+				"inheritProfile.runOnStartup": {
+					"type": "boolean",
+					"default": true,
+					"description": "Updates the inherited settings when extension starts."
+				},
+				"inheritProfile.runOnProfileChange": {
+					"type": "boolean",
+					"default": true,
+					"description": "Updates the inherited settings when the current profile is changed."
+				},
+				"inheritProfile.showSummary": {
+					"type": "boolean",
+					"default": true,
+					"description": "Shows a summary report after synchronization."
+				},
+				"inheritProfile.parents": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"description": "Names of the profiles to inherit settings from."
+				},
+				"inheritProfile.extensions": {
+					"type": "boolean",
+					"default": true,
+					"description": "Inherit extensions from parent profiles."
+				},
+				"inheritProfile.settings": {
+					"type": "boolean",
+					"default": true,
+					"description": "Inherit settings from parent profiles."
+				},
+				"inheritProfile.keybindings": {
+					"type": "boolean",
+					"default": true,
+					"description": "Inherit keybindings from parent profiles."
+				},
+				"inheritProfile.tasks": {
+					"type": "boolean",
+					"default": true,
+					"description": "Inherit tasks from parent profiles."
+				},
+				"inheritProfile.snippets": {
+					"type": "boolean",
+					"default": true,
+					"description": "Inherit snippets from parent profiles."
+				},
+				"inheritProfile.mcp": {
+					"type": "boolean",
+					"default": true,
+					"description": "Inherit MCP servers from parent profiles."
+				}
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"pretest": "npm run compile && biome check",
+		"test": "vscode-test",
+		"unit-test": "mocha -r ts-node/register src/test/**/*.test.ts"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.11",
+		"@types/node": "25.0.3",
+		"@types/vscode": "^1.103.0",
+		"@vscode/test-cli": "^0.0.12",
+		"@vscode/test-electron": "^2.5.2",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.9.2"
+	},
+	"dependencies": {
+		"jsonc-parser": "^3.3.1"
+	}
 }
