@@ -88,19 +88,16 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
+    "pretest": "npm run compile && biome check",
     "test": "vscode-test",
     "unit-test": "mocha -r ts-node/register src/test/**/*.test.ts"
   },
   "devDependencies": {
-    "@types/node": "22.x",
+    "@biomejs/biome": "2.3.11",
+    "@types/node": "25.0.3",
     "@types/vscode": "^1.103.0",
-    "@typescript-eslint/eslint-plugin": "^8.39.0",
-    "@typescript-eslint/parser": "^8.39.0",
-    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.32.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   },
