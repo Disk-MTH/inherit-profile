@@ -161,43 +161,79 @@ export async function getInheritedSettings(
 }
 
 /**
- * Removes the inherited settings block (including the markers) from a settings
- * file.
- *
- * If no markers are found, the file is left unchanged.
+ * Removes the settings (both legacy markers and new header-based blocks) from the file.
+ * Preserves the current profile's local settings.
  */
 export async function removeInheritedSettingsFromFile(
 	settingsPath: string,
+	currentProfileName: string,
+	parents: string[],
 ): Promise<void> {
-	// Find the start and end markers:
-	const raw = await readRawSettingsFile(settingsPath);
+	let raw = await readRawSettingsFile(settingsPath);
+
+	// 1. Remove legacy markers block if found
 	const startIndex = raw.indexOf(INHERITED_SETTINGS_START_MARKER);
 	const endIndex = raw.indexOf(INHERITED_SETTINGS_END_MARKER);
 
-	// Ensure the markers exist:
-	if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
-		if (startIndex !== endIndex) {
-			Logger.warn(
-				"Either the start or end marker is missing in the current profile",
-				"Settings",
-			);
+	if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+		const before = raw.slice(0, startIndex);
+		const after = raw.slice(endIndex + INHERITED_SETTINGS_END_MARKER.length);
+		raw = before.trimEnd() + after.trimEnd();
+		if (!raw.endsWith("}")) {
+			raw += "\n}";
 		}
-		return; // markers not found, leave file alone
 	}
 
-	// Clean response:
-	const before = raw.slice(0, startIndex);
-	const after = raw.slice(endIndex + INHERITED_SETTINGS_END_MARKER.length);
-	let cleaned = before.trimEnd() + after.trimEnd();
+	// 2. Parse file line by line to remove inherited parent headers and their content
+	// We want to keep:
+	// - Content under `// --- ${currentProfileName} (current) --- //`
+	// - Content not under any header (legacy local settings)
+	// We want to remove:
+	// - Content under `// --- ${parent} --- //`
+
+	const lines = raw.split("\n");
+	const outputLines: string[] = [];
+	let skip = false;
+
+	// Normalize header format check
+	const getHeaderName = (line: string): string | null => {
+		const match = line.match(/^\s*\/\/ --- (.*?) --- \/\/\s*$/);
+		return match ? match[1] : null;
+	};
+
+	const currentHeader = `${currentProfileName} (current)`;
+
+	for (const line of lines) {
+		const headerName = getHeaderName(line);
+		if (headerName) {
+			if (headerName === currentHeader) {
+				skip = false;
+				outputLines.push(line);
+			} else if (parents.includes(headerName)) {
+				skip = true;
+			} else {
+				// Unknown header (maybe user custom comment or unregistered parent), keep it
+				skip = false;
+				outputLines.push(line);
+			}
+		} else {
+			if (!skip) {
+				outputLines.push(line);
+			}
+		}
+	}
+
+	let cleaned = outputLines.join("\n");
 
 	// Ensure JSONC ends properly:
 	cleaned = removeTrailingComma(cleaned);
-	if (!cleaned.endsWith("}")) {
-		cleaned += "\n}";
+	if (!cleaned.trim().endsWith("}")) {
+		// If we somehow lost the closing brace or it's malformed
+		cleaned = cleaned.trimEnd() + "\n}";
 	}
 
 	// Write cleaned file:
-	await fs.writeFile(settingsPath, `${cleaned}\n`, "utf8");
+	await fs.writeFile(settingsPath, cleaned, "utf8");
 }
 
 /**
@@ -208,65 +244,72 @@ export async function removeInheritedSettingsFromFile(
  */
 export async function writeInheritedSettings(
 	settingsPath: string,
-	flattened: Record<string, unknown>,
+	groups: Array<{ name: string; settings: Record<string, string> }>,
+	currentProfileName: string,
 ): Promise<void> {
-	// Early exit if there is nothing to add:
-	if (Object.keys(flattened).length === 0) {
-		return;
-	}
-
-	// Read the raw file, split it by the closing brace, and get the tab size
-	// for formatting:
-	const raw = await readRawSettingsFile(settingsPath);
-	const [beforeClose, afterClose] = await splitRawSettingsByClosingBrace(raw);
+	// Read the raw file
+	let raw = await readRawSettingsFile(settingsPath);
 	const tab = findTabValue(raw);
 
-	// Build the inherited settings block:
-	const block = buildInheritedSettingsBlock(
-		flattened as Record<string, string>,
-		tab,
-	);
+	// 1. Ensure the "Current" header exists for local settings
+	const currentHeader = `${tab}// --- ${currentProfileName} (current) --- //`;
+	if (!raw.includes(currentHeader.trim())) {
+		// Insert it after the opening brace
+		const openBraceIndex = raw.indexOf("{");
+		if (openBraceIndex !== -1) {
+			const beforeBox = raw.slice(0, openBraceIndex + 1);
+			const afterBox = raw.slice(openBraceIndex + 1);
+			raw = `${beforeBox}\n${currentHeader}${afterBox}`;
+		}
+	}
 
-	// Insert the inherited settings block between the before and after closing
-	// brace blocks:
-	const beforeClosePlusBlock = insertBeforeClose(beforeClose, block);
-	const finalSettings = beforeClosePlusBlock + afterClose;
+	// 2. Append inherited groups
+	if (groups.length > 0) {
+		const [beforeClose, afterClose] = splitRawSettingsByClosingBrace(raw);
+
+		// Build the inherited settings block:
+		const block = buildInheritedSettingsBlock(groups, tab);
+
+		// Insert the inherited settings block between the before and after closing
+		// brace blocks:
+		const beforeClosePlusBlock = insertBeforeClose(beforeClose, block);
+		raw = beforeClosePlusBlock + afterClose;
+	}
 
 	// Write the final settings to the settings path:
-	await fs.writeFile(settingsPath, finalSettings, "utf8");
+	await fs.writeFile(settingsPath, raw, "utf8");
 }
 
 /**
  * Builds the inherited settings block with start, warning, entries, and end.
  *
- * @param flattened Flattened settings to insert into the settings block.
+ * @param groups Grouped settings to insert into the settings block.
  * @param tab Tab sequence to use.
  * @returns Returns the raw inherited settings block.
  */
 function buildInheritedSettingsBlock(
-	flattened: Record<string, string>,
+	groups: Array<{ name: string; settings: Record<string, string> }>,
 	tab: string,
 ): string {
-	const entries = Object.entries(flattened)
-		.map(([key, value]) => `${tab}"${key}": ${JSON.stringify(value)}`)
-		.join(",\n");
+	const lines: string[] = [];
 
-	return (
-		tab +
-		INHERITED_SETTINGS_START_MARKER +
-		"\n" +
-		tab +
-		WARNING_COMMENT +
-		"\n" +
-		tab +
-		WARNING_EXPLAIN +
-		"\n" +
-		entries +
-		(entries ? "\n" : "") +
-		tab +
-		INHERITED_SETTINGS_END_MARKER +
-		"\n"
-	);
+	groups.forEach((group, index) => {
+		lines.push(`${tab}// --- ${group.name} --- //`);
+		const groupEntries = Object.entries(group.settings);
+		groupEntries.forEach(([key, value], entryIdx) => {
+			const isLastOfAll =
+				index === groups.length - 1 && entryIdx === groupEntries.length - 1;
+			const suffix = isLastOfAll ? "" : ",";
+			lines.push(`${tab}"${key}": ${JSON.stringify(value)}${suffix}`);
+		});
+
+		if (index < groups.length - 1) {
+			lines.push(""); // Empty line for spacing between groups
+		}
+	});
+
+	// Only return the content, NO MARKERS
+	return (lines.length ? "\n" : "") + lines.join("\n") + "\n";
 }
 
 /**
@@ -293,8 +336,15 @@ export async function syncSettings(
 		"settings.json",
 	);
 
+	const config = vscode.workspace.getConfiguration("inheritProfile");
+	const parents = config.get<string[]>("parents", []);
+
 	// Remove the inherited settings from the current profile:
-	await removeInheritedSettingsFromFile(currentProfilePath);
+	await removeInheritedSettingsFromFile(
+		currentProfilePath,
+		currentProfileName,
+		parents,
+	);
 
 	// Get the settings that the current profile should inherit:
 	const { byParent, merged } = await getInheritedSettingsByParent(context);
@@ -303,16 +353,26 @@ export async function syncSettings(
 	// Track settings by parent for the report
 	Reporter.trackSettingsByParent(byParent);
 
-	if (totalInheritedSettings === 0) {
-		Logger.info("No new settings to inherit.", "Settings");
-		return;
+	// Always call writeInheritedSettings to ensure the local header is added,
+	// even if there are no inherited settings.
+	const hierarchy = [...parents].reverse();
+	const groups: Array<{ name: string; settings: Record<string, string> }> = [];
+	for (const parent of hierarchy) {
+		const settings = byParent.get(parent);
+		if (settings && Object.keys(settings).length > 0) {
+			groups.push({ name: parent, settings });
+		}
 	}
 
-	Logger.info(
-		`Inheriting ${totalInheritedSettings} settings from parents`,
-		"Settings",
-	);
+	if (totalInheritedSettings > 0) {
+		Logger.info(
+			`Inheriting ${totalInheritedSettings} settings from parents`,
+			"Settings",
+		);
+	} else {
+		Logger.info("No new settings to inherit.", "Settings");
+	}
 
-	// Add the inherited settings to the end of the profile:
-	await writeInheritedSettings(currentProfilePath, merged);
+	// Add the inherited settings to the end of the profile (and fix local header):
+	await writeInheritedSettings(currentProfilePath, groups, currentProfileName);
 }
