@@ -120,25 +120,6 @@ export function mergeFlattenedSettings(
 }
 
 /**
- * Subtracts one set of settings from another.
- * @param base Base settings.
- * @param toRemove Settings to remove from the base.
- * @returns
- */
-export function subtractSettings(
-	base: Record<string, string>,
-	toRemove: Record<string, string>,
-): Record<string, string> {
-	const result: Record<string, string> = {};
-	for (const [key, value] of Object.entries(base)) {
-		if (!(key in toRemove)) {
-			result[key] = value;
-		}
-	}
-	return result;
-}
-
-/**
  * Sorts a given set of `settings` alphabetically (A to Z).
  * @param settings Settings to sort alphabetically.
  * @returns Returns the `settings`, but sorted alphabetically (A to Z).
@@ -362,29 +343,6 @@ export function insertBeforeClose(beforeClose: string, block: string): string {
 	const after = beforeClose.slice(meaningfulCharIndex + 1);
 
 	return `${before},${after.replace(/\s*$/, "\n")}${block}`;
-}
-
-/**
- * Iterates through each line in a string, yielding [line, startIndex].
- *
- * Handles both LF and CRLF endings.
- */
-export function* iterateLines(text: string): Generator<[string, number]> {
-	let start = 0;
-
-	for (let i = 0; i < text.length; i++) {
-		if (text[i] === "\n") {
-			// Handle CRLF (\r\n)
-			const line = text.slice(start, text[i - 1] === "\r" ? i - 1 : i);
-			yield [line, start];
-			start = i + 1;
-		}
-	}
-
-	// Final line (if text doesn’t end with a newline)
-	if (start <= text.length) {
-		yield [text.slice(start), start];
-	}
 }
 
 /**

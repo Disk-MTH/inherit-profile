@@ -1,37 +1,36 @@
 import * as vscode from "vscode";
 
-// biome-ignore lint/complexity/noStaticOnlyClass: Logger is used as a namespace
-export class Logger {
-	private static channel: vscode.OutputChannel;
+let channel: vscode.OutputChannel | undefined;
 
-	public static initialize(context: vscode.ExtensionContext) {
-		Logger.channel = vscode.window.createOutputChannel("Inherit Profile");
-		context.subscriptions.push(Logger.channel);
-	}
+function getTimestamp(): string {
+	return new Date().toLocaleTimeString();
+}
 
-	private static getTimestamp(): string {
-		return new Date().toLocaleTimeString();
-	}
+export const Logger = {
+	initialize(context: vscode.ExtensionContext) {
+		channel = vscode.window.createOutputChannel("Inherit Profile");
+		context.subscriptions.push(channel);
+	},
 
-	public static info(message: string, section?: string) {
+	info(message: string, section?: string) {
 		const prefix = section ? `[${section}] ` : "";
-		const log = `[INFO ${Logger.getTimestamp()}] ${prefix}${message}`;
+		const log = `[INFO ${getTimestamp()}] ${prefix}${message}`;
 		console.info(log);
-		Logger.channel.appendLine(log);
-	}
+		channel?.appendLine(log);
+	},
 
-	public static warn(message: string, section?: string) {
+	warn(message: string, section?: string) {
 		const prefix = section ? `[${section}] ` : "";
-		const log = `[WARN ${Logger.getTimestamp()}] ${prefix}${message}`;
+		const log = `[WARN ${getTimestamp()}] ${prefix}${message}`;
 		console.warn(log);
-		Logger.channel.appendLine(log);
-	}
+		channel?.appendLine(log);
+	},
 
-	public static error(message: string, error?: unknown, section?: string) {
+	error(message: string, error?: unknown, section?: string) {
 		const prefix = section ? `[${section}] ` : "";
 		const errorMsg = error instanceof Error ? error.message : String(error);
-		const log = `[ERROR ${Logger.getTimestamp()}] ${prefix}${message} ${errorMsg}`;
+		const log = `[ERROR ${getTimestamp()}] ${prefix}${message} ${errorMsg}`;
 		console.error(log);
-		Logger.channel.appendLine(log);
-	}
-}
+		channel?.appendLine(log);
+	},
+};

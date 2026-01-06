@@ -19,79 +19,58 @@ interface SyncData {
 	timestamp: Date;
 }
 
-// biome-ignore lint/complexity/noStaticOnlyClass: Utility class
-export class Reporter {
-	private static data: SyncData = Reporter.createEmptyData();
+export const Reporter = {
+	data: createEmptyData(),
 
-	private static createEmptyData(): SyncData {
-		return {
-			profileName: "Unknown",
-			parents: [],
-			extensions: {
-				byParent: new Map(),
-				installed: [],
-				failed: [],
-			},
-			settings: {
-				byParent: new Map(),
-				total: 0,
-			},
-			timestamp: new Date(),
-		};
-	}
-
-	public static initialize(profileName: string, parents: string[]) {
-		Reporter.data = Reporter.createEmptyData();
+	initialize(profileName: string, parents: string[]) {
+		Reporter.data = createEmptyData();
 		Reporter.data.profileName = profileName;
 		Reporter.data.parents = parents;
 		Reporter.data.timestamp = new Date();
-	}
+	},
 
-	public static trackExtensionsByParent(byParent: Map<string, string[]>) {
+	trackExtensionsByParent(byParent: Map<string, string[]>) {
 		Reporter.data.extensions.byParent = byParent;
-	}
+	},
 
-	public static trackExtensionResult(
-		id: string,
-		status: "installed" | "failed" | "added",
-	) {
+	trackExtensionResult(id: string, status: "installed" | "failed" | "added") {
 		if (status === "failed") {
 			Reporter.data.extensions.failed.push(id);
 		} else {
 			Reporter.data.extensions.installed.push(id);
 		}
-	}
+	},
 
-	public static trackSettingsByParent(byParent: Map<string, string[]>) {
+	trackSettingsByParent(byParent: Map<string, string[]>) {
 		Reporter.data.settings.byParent = byParent;
 		let total = 0;
 		for (const settings of byParent.values()) {
 			total += settings.length;
 		}
 		Reporter.data.settings.total = total;
-	}
+	},
 
 	// Legacy methods for backward compatibility with tests
-	public static trackExtension(id: string, status: "added" | "failed") {
+	trackExtension(id: string, status: "added" | "failed") {
 		Reporter.trackExtensionResult(id, status);
-	}
+	},
 
-	public static trackSettings(count: number, sources: string[]) {
+	trackSettings(count: number, sources: string[]) {
 		const byParent = new Map<string, string[]>();
 		for (const source of sources) {
 			byParent.set(source, []);
 		}
 		Reporter.data.settings.total = count;
 		Reporter.data.settings.byParent = byParent;
-	}
+	},
 
-	public static async showSummary() {
+	async showSummary() {
 		const config = vscode.workspace.getConfiguration("inheritProfile");
 		if (!config.get<boolean>("showSummary", false)) {
 			return;
 		}
 
-		const content = Reporter.generateMarkdown();
+		const content = generateMarkdown(Reporter.data);
 
 		const uri = vscode.Uri.parse("untitled:Profile Sync Summary.md");
 		const doc = await vscode.workspace.openTextDocument(uri);
@@ -101,112 +80,133 @@ export class Reporter {
 		await vscode.workspace.applyEdit(edit);
 
 		await vscode.commands.executeCommand("markdown.showPreview", uri);
-	}
+	},
+};
 
-	private static generateMarkdown(): string {
-		const d = Reporter.data;
-		const time = d.timestamp.toLocaleTimeString();
+function createEmptyData(): SyncData {
+	return {
+		profileName: "Unknown",
+		parents: [],
+		extensions: {
+			byParent: new Map(),
+			installed: [],
+			failed: [],
+		},
+		settings: {
+			byParent: new Map(),
+			total: 0,
+		},
+		timestamp: new Date(),
+	};
+}
 
-		// Build hierarchy: Child → Last Parent → ... → First Parent (strongest override first)
-		const hierarchy = [d.profileName, ...d.parents.slice().reverse()];
+function generateMarkdown(d: SyncData): string {
+	const time = d.timestamp.toLocaleString();
+	// Hierarchy: Child first, then Last Parent ... First Parent
+	const hierarchy = [d.profileName, ...d.parents.slice().reverse()];
 
-		let md = "# 📋 Profile Sync Summary\n\n";
-		md += "| Profile | Time |\n";
-		md += "| :--- | :--- |\n";
-		md += `| \`${d.profileName}\` | ${time} |\n\n`;
-		md += `**Inheriting from:** ${d.parents.map((p) => `\`${p}\``).join(" → ") || "None"}\n\n`;
-		md += "---\n\n";
+	let md = "# 📋 Profile Sync Summary\n\n";
 
-		// Override hierarchy explanation
-		md += "## 📊 Override Hierarchy\n\n";
-		md += "> Sorted by **strongest override first**. ";
-		md +=
-			"Settings and extensions from profiles higher in this list take precedence.\n\n";
-		md += `**${hierarchy.map((p) => `\`${p}\``).join(" → ")}**\n\n`;
-		md += "---\n\n";
+	// Header Table
+	const parentsList = d.parents
+		.map((p) => {
+			const hasExt = d.extensions.byParent.has(p);
+			const hasSet = d.settings.byParent.has(p);
+			// Assume skipped if no data found in either map
+			if (!hasExt && !hasSet) {
+				return `\`${p}\` (skipped)`;
+			}
+			return `\`${p}\``;
+		})
+		.join(", ");
 
-		// Extensions Section
-		md += "## 🧩 Extensions\n\n";
+	md += "| Date | Child (current) | Parents |\n";
+	md += "| :--- | :--- | :--- |\n";
+	md += `| ${time} | \`${d.profileName}\` | ${parentsList || "None"} |\n\n`;
+	md += "---\n\n";
 
-		const hasChanges =
-			d.extensions.installed.length > 0 || d.extensions.failed.length > 0;
+	// Extensions Section
+	md += "## 🧩 Extensions\n\n";
 
-		if (!hasChanges && d.extensions.byParent.size === 0) {
-			md += "✅ All extensions already in sync.\n\n";
-		} else {
-			// Show by hierarchy order (strongest override first)
-			for (const profile of hierarchy) {
-				const extensions = d.extensions.byParent.get(profile);
-				if (extensions && extensions.length > 0) {
-					const isChild = profile === d.profileName;
-					const label = isChild ? `${profile} (child)` : profile;
+	let totalExtensions = 0;
+	let inheritedExtensions = 0;
+	const newlyInstalledTotal = d.extensions.installed.length;
 
-					md += `<details>\n`;
-					md += `<summary><strong>From \`${label}\`</strong> (${extensions.length} extensions)</summary>\n\n`;
-					for (const id of extensions) {
-						const isInstalled = d.extensions.installed.includes(id);
-						const isFailed = d.extensions.failed.includes(id);
+	for (const profile of hierarchy) {
+		const exts = d.extensions.byParent.get(profile);
+		if (exts && exts.length > 0) {
+			const isChild = profile === d.profileName;
+			const label = isChild ? `${profile} (current)` : profile;
 
-						let icon = "✓";
-						let note = "";
-						if (isInstalled) {
-							icon = "✅";
-							note = " (installed)";
-						} else if (isFailed) {
-							icon = "❌";
-							note = " (failed)";
-						}
-						md += `- ${icon} \`${id}\`${note}\n`;
-					}
-					md += "\n</details>\n\n";
+			// Count installed for this specific profile source
+			const installedFromThis = exts.filter((id) =>
+				d.extensions.installed.includes(id),
+			).length;
+			const installedStr =
+				installedFromThis > 0 ? ` (${installedFromThis} installed)` : "";
+
+			md += "<details>\n";
+			md += `<summary>From <strong>"${label}"</strong> - ${exts.length} extensions${installedStr}</summary>\n\n`;
+
+			for (const id of exts) {
+				const isInstalled = d.extensions.installed.includes(id);
+				const isFailed = d.extensions.failed.includes(id);
+
+				let icon = "✓";
+				let note = "";
+				if (isInstalled) {
+					icon = "✅";
+					note = " (installed)";
+				} else if (isFailed) {
+					icon = "❌";
+					note = " (failed)";
 				}
+				md += `- ${icon} \`${id}\`${note}\n`;
 			}
+			md += "\n</details>\n\n";
 
-			// Summary
-			const summaryParts: string[] = [];
-			if (d.extensions.installed.length > 0) {
-				summaryParts.push(`✅ ${d.extensions.installed.length} installed`);
-			}
-			if (d.extensions.failed.length > 0) {
-				summaryParts.push(`❌ ${d.extensions.failed.length} failed`);
-			}
-			if (summaryParts.length > 0) {
-				md += `**Summary:** ${summaryParts.join(" | ")}\n\n`;
+			totalExtensions += exts.length;
+			if (!isChild) {
+				inheritedExtensions += exts.length;
 			}
 		}
-
-		// Settings Section
-		md += "## ⚙️ Settings\n\n";
-
-		if (d.settings.total === 0) {
-			md += "✅ All settings already up to date.\n\n";
-		} else {
-			// Show by hierarchy order (strongest override first)
-			for (const profile of hierarchy) {
-				const settings = d.settings.byParent.get(profile);
-				if (settings && settings.length > 0) {
-					const isChild = profile === d.profileName;
-					const label = isChild ? `${profile} (child)` : profile;
-
-					md += `<details>\n`;
-					md += `<summary><strong>From \`${label}\`</strong> (${settings.length} settings)</summary>\n\n`;
-					const displaySettings =
-						settings.length > 15 ? settings.slice(0, 15) : settings;
-					for (const key of displaySettings) {
-						md += `- \`${key}\`\n`;
-					}
-					if (settings.length > 15) {
-						md += `- ... and ${settings.length - 15} more\n`;
-					}
-					md += "\n</details>\n\n";
-				}
-			}
-			md += `**Total:** ${d.settings.total} settings inherited\n\n`;
-		}
-
-		md += "---\n\n";
-		md += "*Generated by Inherit Profile Extension*\n";
-
-		return md;
 	}
+
+	const installedSummary =
+		newlyInstalledTotal > 0 ? ` (${newlyInstalledTotal} installed)` : "";
+	md += `**Summary:** ${totalExtensions} extensions, ${inheritedExtensions} inherited${installedSummary}\n\n`;
+
+	// Settings Section
+	md += "## ⚙️ Settings\n\n";
+
+	let totalSettings = 0;
+	let inheritedSettings = 0;
+
+	for (const profile of hierarchy) {
+		const settings = d.settings.byParent.get(profile);
+		if (settings && settings.length > 0) {
+			const isChild = profile === d.profileName;
+			const label = isChild ? `${profile} (current)` : profile;
+
+			md += "<details>\n";
+			md += `<summary>From <strong>"${label}"</strong> - ${settings.length} settings</summary>\n\n`;
+
+			for (const key of settings) {
+				md += `- \`${key}\`\n`;
+			}
+			md += "\n</details>\n\n";
+
+			totalSettings += settings.length;
+			if (!isChild) {
+				inheritedSettings += settings.length;
+			}
+		}
+	}
+
+	md += `**Summary:** ${totalSettings} settings, ${inheritedSettings} inherited\n\n`;
+
+	md += "---\n\n";
+	md += "*Generated by Inherit Profile Extension*\n";
+
+	return md;
 }

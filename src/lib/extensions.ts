@@ -6,14 +6,6 @@ import { getCurrentProfileName, getProfileMap } from "./profileDiscovery.js";
 import { Reporter } from "./reporter.js";
 import { readJSON } from "./utils.js";
 
-interface Extension {
-	identifier?: { id: string };
-}
-
-interface DisabledExtension {
-	id: string;
-}
-
 /**
  * Gets the path to the global extensions directory.
  * Default: ~/.vscode/extensions
@@ -46,7 +38,7 @@ async function getDisabledExtensions(
 		const { stdout } = await execAsync(`sqlite3 "${stateDbPath}" "${query}"`);
 
 		if (stdout.trim()) {
-			const disabled: DisabledExtension[] = JSON.parse(stdout.trim());
+			const disabled: { id: string }[] = JSON.parse(stdout.trim());
 			const ids = new Set(disabled.map((d) => d.id.toLowerCase()));
 			if (ids.size > 0) {
 				Logger.info(
@@ -96,7 +88,7 @@ export async function getProfileExtensions(
 
 	if (Array.isArray(extensions)) {
 		const ids = extensions
-			.map((ext: Extension) => ext.identifier?.id)
+			.map((ext: { identifier?: { id: string } }) => ext.identifier?.id)
 			.filter((id): id is string => typeof id === "string");
 		Logger.info(
 			`Found ${ids.length} extensions in '${profileName}' profile`,
@@ -123,10 +115,18 @@ async function getParentExtensions(
 ): Promise<Map<string, string>> {
 	const extensionMap = new Map<string, string>();
 
-	for (const parent of parentProfiles) {
-		const allExtensions = await getProfileExtensions(context, parent);
-		const disabledExtensions = await getDisabledExtensions(context, parent);
+	// Optimize: fetch all data in parallel
+	const profilesData = await Promise.all(
+		parentProfiles.map(async (parent) => {
+			const [allExtensions, disabledExtensions] = await Promise.all([
+				getProfileExtensions(context, parent),
+				getDisabledExtensions(context, parent),
+			]);
+			return { parent, allExtensions, disabledExtensions };
+		}),
+	);
 
+	for (const { parent, allExtensions, disabledExtensions } of profilesData) {
 		// Only include extensions that are NOT disabled in this parent
 		for (const id of allExtensions) {
 			const lowerId = id.toLowerCase();

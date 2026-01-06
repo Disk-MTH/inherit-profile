@@ -27,6 +27,20 @@ const WARNING_EXPLAIN =
 	"//          The markers are used to identify inserted inherited settings";
 
 /**
+ * Reads and flattens settings from a profile directory.
+ */
+async function readProfileSettings(
+	profilePath: string,
+): Promise<Record<string, string>> {
+	const settingsPath = path.join(profilePath, "settings.json");
+	const json = await readJSON(settingsPath, true);
+	return flattenSettings(json as Record<string, unknown>) as Record<
+		string,
+		string
+	>;
+}
+
+/**
  * Collects the settings for each of the profiles.
  *
  * This function will start with the first profile in the list. This function
@@ -48,11 +62,8 @@ export async function getProfileSettings(
 			Logger.warn(`Profile '${profileName}' not found.`, "Settings");
 			continue;
 		}
-		const settingsPath = path.join(profilePath, "settings.json");
 
-		const profileSettings = flattenSettings(
-			(await readJSON(settingsPath, true)) as Record<string, unknown>,
-		);
+		const profileSettings = await readProfileSettings(profilePath);
 		const count = Object.keys(profileSettings).length;
 		if (count > 0) {
 			Logger.info(
@@ -60,10 +71,7 @@ export async function getProfileSettings(
 				"Settings",
 			);
 		}
-		settings = mergeFlattenedSettings(
-			settings,
-			profileSettings as Record<string, string>,
-		);
+		settings = mergeFlattenedSettings(settings, profileSettings);
 	}
 	return flattenSettings(settings) as Record<string, string>;
 }
@@ -117,10 +125,7 @@ export async function getInheritedSettingsByParent(
 		const profilePath = profileMap[profileName];
 		if (!profilePath) continue;
 
-		const settingsPath = path.join(profilePath, "settings.json");
-		const profileSettings = flattenSettings(
-			(await readJSON(settingsPath, true)) as Record<string, unknown>,
-		) as Record<string, string>;
+		const profileSettings = await readProfileSettings(profilePath);
 
 		const newFromThisParent: string[] = [];
 
