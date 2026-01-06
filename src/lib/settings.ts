@@ -14,7 +14,6 @@ import {
 	removeTrailingComma,
 	sortSettings,
 	splitRawSettingsByClosingBrace,
-	subtractSettings,
 } from "./utils.js";
 
 const INHERITED_SETTINGS_START_MARKER =
@@ -82,6 +81,56 @@ export async function getCurrentProfileSettings(
 }
 
 /**
+ * Gets the inherited settings organized by parent profile.
+ * @param context Extension context.
+ * @returns Map of parent name to list of setting keys inherited from that parent.
+ */
+export async function getInheritedSettingsByParent(
+	context: vscode.ExtensionContext,
+): Promise<{
+	byParent: Map<string, string[]>;
+	merged: Record<string, string>;
+}> {
+	const currentProfileSettings = await getCurrentProfileSettings(context);
+	const config = vscode.workspace.getConfiguration("inheritProfile");
+	const parentProfiles = config.get<string[]>("parents", []);
+
+	const byParent = new Map<string, string[]>();
+	const alreadyInherited = new Set<string>(Object.keys(currentProfileSettings));
+	let merged: Record<string, string> = {};
+
+	const profileMap = await getProfileMap(context);
+
+	// Process each parent in order
+	for (const profileName of parentProfiles) {
+		const profilePath = profileMap[profileName];
+		if (!profilePath) continue;
+
+		const settingsPath = path.join(profilePath, "settings.json");
+		const profileSettings = flattenSettings(
+			(await readJSON(settingsPath, true)) as Record<string, unknown>,
+		) as Record<string, string>;
+
+		const newFromThisParent: string[] = [];
+
+		for (const key of Object.keys(profileSettings)) {
+			if (!alreadyInherited.has(key)) {
+				newFromThisParent.push(key);
+				alreadyInherited.add(key);
+				merged[key] = profileSettings[key];
+			}
+		}
+
+		if (newFromThisParent.length > 0) {
+			byParent.set(profileName, newFromThisParent.sort());
+		}
+	}
+
+	merged = sortSettings(merged);
+	return { byParent, merged };
+}
+
+/**
  * Gets the settings that are missing from the current profile.
  * @param context Extension context.
  * @returns Returns the flattened settings that are missing from the current profile.
@@ -89,22 +138,8 @@ export async function getCurrentProfileSettings(
 export async function getInheritedSettings(
 	context: vscode.ExtensionContext,
 ): Promise<Record<string, string>> {
-	const currentProfileSettings = await getCurrentProfileSettings(context);
-
-	const config = vscode.workspace.getConfiguration("inheritProfile");
-	const parentProfiles = config.get<string[]>("parents", []);
-	const parentProfileSettings = await getProfileSettings(
-		context,
-		parentProfiles,
-	);
-
-	const inheritedSettings = subtractSettings(
-		parentProfileSettings,
-		currentProfileSettings,
-	);
-
-	const sortedInheritedSettings = sortSettings(inheritedSettings);
-	return sortedInheritedSettings;
+	const { merged } = await getInheritedSettingsByParent(context);
+	return merged;
 }
 
 /**
@@ -244,12 +279,11 @@ export async function syncSettings(
 	await removeInheritedSettingsFromFile(currentProfilePath);
 
 	// Get the settings that the current profile should inherit:
-	const inheritedSettings = await getInheritedSettings(context);
-	const totalInheritedSettings = Object.keys(inheritedSettings).length;
+	const { byParent, merged } = await getInheritedSettingsByParent(context);
+	const totalInheritedSettings = Object.keys(merged).length;
 
-	const config = vscode.workspace.getConfiguration("inheritProfile");
-	const parentProfiles = config.get<string[]>("parents", []);
-	Reporter.trackSettings(totalInheritedSettings, parentProfiles);
+	// Track settings by parent for the report
+	Reporter.trackSettingsByParent(byParent);
 
 	if (totalInheritedSettings === 0) {
 		Logger.info("No new settings to inherit.", "Settings");
@@ -262,5 +296,5 @@ export async function syncSettings(
 	);
 
 	// Add the inherited settings to the end of the profile:
-	await writeInheritedSettings(currentProfilePath, inheritedSettings);
+	await writeInheritedSettings(currentProfilePath, merged);
 }

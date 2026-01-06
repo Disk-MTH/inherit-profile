@@ -41,22 +41,18 @@ suite("Extensions Sync Test Suite", () => {
 		// Execute
 		await syncExtensions(env.getContext());
 
-		// Verify via Reporter
-		// We expect it to fail because the ID is fake, but it should be tracked.
+		// Verify via Reporter - expect it to fail because the ID is fake
 		// biome-ignore lint/suspicious/noExplicitAny: Accessing private property for testing
 		const data = (Reporter as any).data;
 		assert.ok(
 			data.extensions.failed.includes("fake.extension.id") ||
-				data.extensions.added.includes("fake.extension.id"),
-			"Should track the extension attempt (likely failed)",
+				data.extensions.installed.includes("fake.extension.id"),
+			"Should track the extension attempt",
 		);
 	});
 
 	test("Skips already installed extensions", async () => {
-		// We can't easily mock installed extensions, but we can check logic.
-		// If we use the ID of the extension under test (inherit-profile), it is installed.
-		// The ID is "alexthomson.inherit-profile" (from package.json).
-
+		// The extension "alexthomson.inherit-profile" is already installed (it's under test)
 		await env.createProfile("Parent", "parent-loc", {}, [
 			{ identifier: { id: "alexthomson.inherit-profile" } },
 		]);
@@ -76,15 +72,17 @@ suite("Extensions Sync Test Suite", () => {
 		// Execute
 		await syncExtensions(env.getContext());
 
-		// Verify
+		// Verify - should NOT be in installed or failed since it's already present
 		// biome-ignore lint/suspicious/noExplicitAny: Accessing private property for testing
 		const data = (Reporter as any).data;
-		assert.strictEqual(
-			data.extensions.added.length,
-			0,
+		assert.ok(
+			!data.extensions.installed.includes("alexthomson.inherit-profile"),
 			"Should not add already installed extension",
 		);
-		assert.strictEqual(data.extensions.failed.length, 0, "Should not fail");
+		assert.ok(
+			!data.extensions.failed.includes("alexthomson.inherit-profile"),
+			"Should not fail",
+		);
 	});
 
 	test("Default profile reads from global extensions directory", async () => {

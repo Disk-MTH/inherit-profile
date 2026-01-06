@@ -10,6 +10,10 @@ interface Extension {
 	identifier?: { id: string };
 }
 
+interface DisabledExtension {
+	id: string;
+}
+
 /**
  * Gets the path to the global extensions directory.
  * Default: ~/.vscode/extensions
@@ -19,13 +23,44 @@ export function getGlobalExtensionsDir(): string {
 }
 
 /**
- * Gets the list of active extensions in the current VS Code window.
- * @returns List of extensions (identifiers).
+ * Gets the disabled extensions for a profile from state.vscdb.
  */
-export function getActiveExtensions(): Extension[] {
-	return vscode.extensions.all
-		.filter((ext) => !ext.packageJSON.isBuiltin)
-		.map((ext) => ({ identifier: { id: ext.id } }));
+async function getDisabledExtensions(
+	context: vscode.ExtensionContext,
+	profileName: string,
+): Promise<Set<string>> {
+	const profileMap = await getProfileMap(context);
+	const profilePath = profileMap[profileName];
+	if (!profilePath) {
+		return new Set();
+	}
+
+	const stateDbPath = path.join(profilePath, "globalStorage", "state.vscdb");
+
+	try {
+		const { exec } = await import("node:child_process");
+		const { promisify } = await import("node:util");
+		const execAsync = promisify(exec);
+
+		const query = `SELECT value FROM ItemTable WHERE key = 'extensionsIdentifiers/disabled'`;
+		const { stdout } = await execAsync(`sqlite3 "${stateDbPath}" "${query}"`);
+
+		if (stdout.trim()) {
+			const disabled: DisabledExtension[] = JSON.parse(stdout.trim());
+			const ids = new Set(disabled.map((d) => d.id.toLowerCase()));
+			if (ids.size > 0) {
+				Logger.info(
+					`Found ${ids.size} disabled extensions in '${profileName}'`,
+					"Extensions",
+				);
+			}
+			return ids;
+		}
+	} catch {
+		// Database might not exist or query failed
+	}
+
+	return new Set();
 }
 
 /**
@@ -60,7 +95,6 @@ export async function getProfileExtensions(
 	const extensions = await readJSON(extensionsPath, true);
 
 	if (Array.isArray(extensions)) {
-		// Extract extension IDs from the extensions.json format
 		const ids = extensions
 			.map((ext: Extension) => ext.identifier?.id)
 			.filter((id): id is string => typeof id === "string");
@@ -79,41 +113,51 @@ export async function getProfileExtensions(
 }
 
 /**
- * Merges extensions from parent profiles using hierarchy rules.
- * Later parents override earlier parents, child overrides all.
- * @param parentProfiles List of parent profile names (in order).
- * @param context Extension context.
- * @returns Set of extension IDs to inherit.
+ * Gets extensions to inherit from parent profiles.
+ * Only includes extensions that are ENABLED in the parent (not disabled).
+ * Returns a map of extension ID to the parent it comes from.
  */
-export async function mergeParentExtensions(
+async function getParentExtensions(
 	context: vscode.ExtensionContext,
 	parentProfiles: string[],
-): Promise<Set<string>> {
-	const mergedExtensions = new Set<string>();
+): Promise<Map<string, string>> {
+	const extensionMap = new Map<string, string>();
 
-	// Process parents in order - later parents override earlier ones
 	for (const parent of parentProfiles) {
-		const extensions = await getProfileExtensions(context, parent);
-		for (const id of extensions) {
-			mergedExtensions.add(id.toLowerCase());
+		const allExtensions = await getProfileExtensions(context, parent);
+		const disabledExtensions = await getDisabledExtensions(context, parent);
+
+		// Only include extensions that are NOT disabled in this parent
+		for (const id of allExtensions) {
+			const lowerId = id.toLowerCase();
+			if (!disabledExtensions.has(lowerId)) {
+				// Later parents override earlier ones
+				extensionMap.set(lowerId, parent);
+			}
 		}
-		Logger.info(
-			`Merged ${extensions.length} extensions from '${parent}'`,
-			"Extensions",
-		);
 	}
 
-	return mergedExtensions;
+	return extensionMap;
+}
+
+/**
+ * Gets the set of currently installed extension IDs.
+ */
+function getInstalledExtensionIds(): Set<string> {
+	return new Set(
+		vscode.extensions.all
+			.filter((ext) => !ext.packageJSON.isBuiltin)
+			.map((ext) => ext.id.toLowerCase()),
+	);
 }
 
 /**
  * Synchronizes extensions from parent profiles to the current profile.
- * Uses hierarchy: parents are merged in order, child profile prevails.
+ * Installs missing extensions that are enabled in parent profiles.
  */
 export async function syncExtensions(context: vscode.ExtensionContext) {
 	const config = vscode.workspace.getConfiguration("inheritProfile");
 
-	// Check if extension sync is enabled
 	if (!config.get<boolean>("extensions", true)) {
 		return;
 	}
@@ -124,64 +168,62 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 	}
 
 	const currentProfileName = await getCurrentProfileName(context);
+	const installedIds = getInstalledExtensionIds();
 
-	// Get currently installed extensions (child profile)
-	const currentExtensions = getActiveExtensions();
-	const installedIds = new Set(
-		currentExtensions
-			.map((e) => e.identifier?.id.toLowerCase())
-			.filter((id): id is string => !!id),
-	);
 	Logger.info(
 		`Current profile '${currentProfileName}' has ${installedIds.size} extensions`,
 		"Extensions",
 	);
 
-	// Merge all parent extensions using hierarchy
-	const parentExtensions = await mergeParentExtensions(context, parentProfiles);
+	// Get extensions from all parent profiles
+	const parentExtensions = await getParentExtensions(context, parentProfiles);
 	Logger.info(
-		`Parents provide ${parentExtensions.size} unique extensions`,
+		`Found ${parentExtensions.size} extensions in parent profiles`,
 		"Extensions",
 	);
 
-	// Find extensions to install (in parents but not in child)
-	const toInstall: string[] = [];
-	for (const id of parentExtensions) {
-		if (!installedIds.has(id)) {
-			toInstall.push(id);
+	// Track extensions by parent for reporting
+	const extensionsByParent = new Map<string, string[]>();
+	for (const [id, source] of parentExtensions) {
+		if (!extensionsByParent.has(source)) {
+			extensionsByParent.set(source, []);
 		}
+		extensionsByParent.get(source)?.push(id);
 	}
-
-	if (toInstall.length === 0) {
-		Logger.info("All parent extensions already installed.", "Extensions");
-		return;
-	}
-
-	Logger.info(
-		`Installing ${toInstall.length} extensions from parents...`,
-		"Extensions",
-	);
+	Reporter.trackExtensionsByParent(extensionsByParent);
 
 	// Install missing extensions
-	let installed = 0;
-	for (const id of toInstall) {
-		Logger.info(`Installing '${id}'...`, "Extensions");
+	let installedCount = 0;
+	let failedCount = 0;
+
+	for (const [lowerId, source] of parentExtensions) {
+		if (installedIds.has(lowerId)) {
+			continue;
+		}
+
+		Logger.info(`Installing '${lowerId}' from '${source}'...`, "Extensions");
 		try {
 			await vscode.commands.executeCommand(
 				"workbench.extensions.installExtension",
-				id,
+				lowerId,
 				{ donotSync: true },
 			);
-			Reporter.trackExtension(id, "added");
-			installed++;
+			Reporter.trackExtensionResult(lowerId, "installed");
+			installedCount++;
 		} catch (err) {
-			Logger.error(`Failed to install '${id}'`, err, "Extensions");
-			Reporter.trackExtension(id, "failed");
+			Logger.error(`Failed to install '${lowerId}'`, err, "Extensions");
+			Reporter.trackExtensionResult(lowerId, "failed");
+			failedCount++;
 		}
 	}
 
-	Logger.info(
-		`Installed ${installed}/${toInstall.length} extensions`,
-		"Extensions",
-	);
+	// Summary
+	if (installedCount === 0 && failedCount === 0) {
+		Logger.info("All extensions already installed.", "Extensions");
+	} else {
+		const parts: string[] = [];
+		if (installedCount > 0) parts.push(`${installedCount} installed`);
+		if (failedCount > 0) parts.push(`${failedCount} failed`);
+		Logger.info(`Extensions sync complete: ${parts.join(", ")}`, "Extensions");
+	}
 }

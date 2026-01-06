@@ -1,10 +1,21 @@
 import * as vscode from "vscode";
 
+interface ExtensionData {
+	byParent: Map<string, string[]>;
+	installed: string[];
+	failed: string[];
+}
+
+interface SettingsData {
+	byParent: Map<string, string[]>;
+	total: number;
+}
+
 interface SyncData {
 	profileName: string;
 	parents: string[];
-	extensions: { added: string[]; failed: string[] };
-	settings: { inherited: number; sources: string[] };
+	extensions: ExtensionData;
+	settings: SettingsData;
 	timestamp: Date;
 }
 
@@ -16,8 +27,15 @@ export class Reporter {
 		return {
 			profileName: "Unknown",
 			parents: [],
-			extensions: { added: [], failed: [] },
-			settings: { inherited: 0, sources: [] },
+			extensions: {
+				byParent: new Map(),
+				installed: [],
+				failed: [],
+			},
+			settings: {
+				byParent: new Map(),
+				total: 0,
+			},
 			timestamp: new Date(),
 		};
 	}
@@ -29,14 +47,42 @@ export class Reporter {
 		Reporter.data.timestamp = new Date();
 	}
 
+	public static trackExtensionsByParent(byParent: Map<string, string[]>) {
+		Reporter.data.extensions.byParent = byParent;
+	}
+
+	public static trackExtensionResult(
+		id: string,
+		status: "installed" | "failed" | "added",
+	) {
+		if (status === "failed") {
+			Reporter.data.extensions.failed.push(id);
+		} else {
+			Reporter.data.extensions.installed.push(id);
+		}
+	}
+
+	public static trackSettingsByParent(byParent: Map<string, string[]>) {
+		Reporter.data.settings.byParent = byParent;
+		let total = 0;
+		for (const settings of byParent.values()) {
+			total += settings.length;
+		}
+		Reporter.data.settings.total = total;
+	}
+
+	// Legacy methods for backward compatibility with tests
 	public static trackExtension(id: string, status: "added" | "failed") {
-		if (status === "added") Reporter.data.extensions.added.push(id);
-		else Reporter.data.extensions.failed.push(id);
+		Reporter.trackExtensionResult(id, status);
 	}
 
 	public static trackSettings(count: number, sources: string[]) {
-		Reporter.data.settings.inherited = count;
-		Reporter.data.settings.sources = sources;
+		const byParent = new Map<string, string[]>();
+		for (const source of sources) {
+			byParent.set(source, []);
+		}
+		Reporter.data.settings.total = count;
+		Reporter.data.settings.byParent = byParent;
 	}
 
 	public static async showSummary() {
@@ -47,7 +93,7 @@ export class Reporter {
 
 		const content = Reporter.generateMarkdown();
 
-		const uri = vscode.Uri.parse(`untitled:Profile Sync Summary.md`);
+		const uri = vscode.Uri.parse("untitled:Profile Sync Summary.md");
 		const doc = await vscode.workspace.openTextDocument(uri);
 
 		const edit = new vscode.WorkspaceEdit();
@@ -61,44 +107,85 @@ export class Reporter {
 		const d = Reporter.data;
 		const time = d.timestamp.toLocaleTimeString();
 
-		let md = `# Profile Sync Summary\n\n`;
-		md += `**Profile:** \`${d.profileName}\` &nbsp;|&nbsp; **Time:** ${time}\n\n`;
-		md += `**Parents:** ${d.parents.map((p) => `\`${p}\``).join(", ") || "None"}\n\n`;
-		md += `---\n\n`;
+		let md = "# 📋 Profile Sync Summary\n\n";
+		md += "| Profile | Time |\n";
+		md += "| :--- | :--- |\n";
+		md += `| \`${d.profileName}\` | ${time} |\n\n`;
+		md += `**Inheriting from:** ${d.parents.map((p) => `\`${p}\``).join(" → ") || "None"}\n\n`;
+		md += "---\n\n";
 
-		// Extensions
-		md += `## Extensions\n\n`;
-		if (d.extensions.added.length === 0 && d.extensions.failed.length === 0) {
-			md += `_No changes._\n\n`;
+		// Extensions Section
+		md += "## 🧩 Extensions\n\n";
+
+		const hasChanges =
+			d.extensions.installed.length > 0 || d.extensions.failed.length > 0;
+
+		if (!hasChanges && d.extensions.byParent.size === 0) {
+			md += "✅ All extensions already in sync.\n\n";
 		} else {
-			if (d.extensions.added.length > 0) {
-				md += `### Installed (${d.extensions.added.length})\n\n`;
-				md += `| Extension | Status |\n`;
-				md += `| :--- | :--- |\n`;
-				d.extensions.added.forEach((id) => {
-					md += `| [${id}](command:extension.open?${encodeURIComponent(JSON.stringify([id]))}) | ✅ Installed |\n`;
-				});
-				md += "\n";
+			// Show by parent
+			for (const parent of d.parents) {
+				const extensions = d.extensions.byParent.get(parent);
+				if (extensions && extensions.length > 0) {
+					md += `### From \`${parent}\` (${extensions.length})\n\n`;
+					for (const id of extensions) {
+						const isInstalled = d.extensions.installed.includes(id);
+						const isFailed = d.extensions.failed.includes(id);
+
+						let icon = "✓";
+						let note = "";
+						if (isInstalled) {
+							icon = "✅";
+							note = " (installed)";
+						} else if (isFailed) {
+							icon = "❌";
+							note = " (failed)";
+						}
+						md += `- ${icon} \`${id}\`${note}\n`;
+					}
+					md += "\n";
+				}
+			}
+
+			// Summary
+			const summaryParts: string[] = [];
+			if (d.extensions.installed.length > 0) {
+				summaryParts.push(`✅ ${d.extensions.installed.length} installed`);
 			}
 			if (d.extensions.failed.length > 0) {
-				md += `### Failed (${d.extensions.failed.length})\n\n`;
-				d.extensions.failed.forEach((id) => {
-					md += `- ❌ ${id}\n`;
-				});
-				md += "\n";
+				summaryParts.push(`❌ ${d.extensions.failed.length} failed`);
+			}
+			if (summaryParts.length > 0) {
+				md += `**Summary:** ${summaryParts.join(" | ")}\n\n`;
 			}
 		}
 
-		// Settings
-		md += `## Settings\n\n`;
-		md += `**Inherited:** ${d.settings.inherited} settings\n\n`;
-		if (d.settings.sources.length > 0) {
-			md += `_Sources: ${d.settings.sources.join(", ")}_\n\n`;
-		}
-		md += `[Open Settings (UI)](command:workbench.action.openSettings) &nbsp;|&nbsp; [Open Settings (JSON)](command:workbench.action.openSettingsJson)\n\n`;
+		// Settings Section
+		md += "## ⚙️ Settings\n\n";
 
-		md += `---\n`;
-		md += `*Generated by Inherit Profile Extension*`;
+		if (d.settings.total === 0) {
+			md += "✅ All settings already up to date.\n\n";
+		} else {
+			for (const parent of d.parents) {
+				const settings = d.settings.byParent.get(parent);
+				if (settings && settings.length > 0) {
+					md += `### From \`${parent}\` (${settings.length})\n\n`;
+					const displaySettings =
+						settings.length > 15 ? settings.slice(0, 15) : settings;
+					for (const key of displaySettings) {
+						md += `- \`${key}\`\n`;
+					}
+					if (settings.length > 15) {
+						md += `- ... and ${settings.length - 15} more\n`;
+					}
+					md += "\n";
+				}
+			}
+			md += `**Total:** ${d.settings.total} settings inherited\n\n`;
+		}
+
+		md += "---\n\n";
+		md += "*Generated by Inherit Profile Extension*\n";
 
 		return md;
 	}
