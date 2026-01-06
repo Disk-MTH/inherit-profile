@@ -130,6 +130,12 @@ async function getParentExtensions(
 		// Only include extensions that are NOT disabled in this parent
 		for (const id of allExtensions) {
 			const lowerId = id.toLowerCase();
+
+			// Filter out GitHub Copilot extensions as requested
+			if (lowerId.startsWith("github.copilot")) {
+				continue;
+			}
+
 			if (!disabledExtensions.has(lowerId)) {
 				// Later parents override earlier ones
 				extensionMap.set(lowerId, parent);
