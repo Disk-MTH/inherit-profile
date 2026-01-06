@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import {
 	removeCurrentProfileInheritedSettings,
 	updateCurrentProfileInheritance,
-	updateInheritedSettingsOnProfileChange,
 } from "./profiles";
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -22,17 +21,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			},
 		),
 	);
-
-	// Apply on startup:
-	const config = vscode.workspace.getConfiguration("inheritProfile");
-	if (config.get<boolean>("runOnStartup", true)) {
-		await updateCurrentProfileInheritance(context);
-	}
-
-	// Apply on profile change:
-	if (config.get<boolean>("runOnProfileChange", true)) {
-		await updateInheritedSettingsOnProfileChange(context);
-	}
 }
 
 export function deactivate() {}

@@ -23,18 +23,4 @@ suite("Reporter Test Suite", () => {
 		assert.strictEqual(data.settings.inherited, 10);
 		assert.deepStrictEqual(data.settings.sources, ["Parent1"]);
 	});
-
-	test("Tracks MCP servers", () => {
-		Reporter.trackMcp("server1");
-		// biome-ignore lint/suspicious/noExplicitAny: Accessing private property for testing
-		const data = (Reporter as any).data;
-		assert.deepStrictEqual(data.mcp.servers, ["server1"]);
-	});
-
-	test("Tracks tasks", () => {
-		Reporter.trackTasks(5);
-		// biome-ignore lint/suspicious/noExplicitAny: Accessing private property for testing
-		const data = (Reporter as any).data;
-		assert.strictEqual(data.tasks.inherited, 5);
-	});
 });

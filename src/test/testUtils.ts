@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { Logger } from "../lib/logger";
 
 export interface MockContext extends vscode.ExtensionContext {
 	globalStorageUri: vscode.Uri;
@@ -28,6 +29,7 @@ export class TestEnvironment {
 	public async setup() {
 		await fs.mkdir(this.extensionStorageDir, { recursive: true });
 		await fs.mkdir(this.profilesDir, { recursive: true });
+		Logger.initialize(this.getContext());
 	}
 
 	public async teardown() {
@@ -83,12 +85,6 @@ export class TestEnvironment {
 		settings: any = {},
 		// biome-ignore lint/suspicious/noExplicitAny: Test data
 		extensions: any[] = [],
-		// biome-ignore lint/suspicious/noExplicitAny: Test data
-		mcp: any = {},
-		// biome-ignore lint/suspicious/noExplicitAny: Test data
-		tasks: any = {},
-		// biome-ignore lint/suspicious/noExplicitAny: Test data
-		snippets: any[] = [],
 	) {
 		const profilePath = path.join(this.profilesDir, location);
 		await fs.mkdir(profilePath, { recursive: true });
@@ -104,28 +100,6 @@ export class TestEnvironment {
 				path.join(profilePath, "extensions.json"),
 				JSON.stringify(extensions, null, 4),
 			);
-		}
-		if (mcp) {
-			await fs.writeFile(
-				path.join(profilePath, "mcp.json"),
-				JSON.stringify(mcp, null, 4),
-			);
-		}
-		if (tasks) {
-			await fs.writeFile(
-				path.join(profilePath, "tasks.json"),
-				JSON.stringify(tasks, null, 4),
-			);
-		}
-		if (snippets && snippets.length > 0) {
-			const snippetsDir = path.join(profilePath, "snippets");
-			await fs.mkdir(snippetsDir, { recursive: true });
-			for (const snippet of snippets) {
-				await fs.writeFile(
-					path.join(snippetsDir, snippet.name),
-					JSON.stringify(snippet.content, null, 4),
-				);
-			}
 		}
 		return profilePath;
 	}

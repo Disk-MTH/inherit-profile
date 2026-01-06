@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { Logger } from "./logger.js";
@@ -32,24 +33,63 @@ export async function getProfileExtensions(
 	const profileMap = await getProfileMap(context);
 	const profilePath = profileMap[profileName];
 	if (!profilePath) {
-		Logger.warn(`Profile ${profileName} not found.`, "Extensions");
+		Logger.warn(`Profile '${profileName}' not found.`, "Extensions");
 		return [];
 	}
 
-	const extensionsPath = path.join(profilePath, "extensions.json");
-	// Logger.info(`Reading extensions from ${extensionsPath}`, "Extensions");
+	// For Default profile, scan the global extensions directory
+	if (profileName === "Default") {
+		try {
+			// context.extensionPath is e.g. /Users/user/.vscode/extensions/my-ext-version
+			// So parent dir is /Users/user/.vscode/extensions
+			const extensionsDir = path.dirname(context.extensionPath);
+			const entries = await fs.readdir(extensionsDir, {
+				withFileTypes: true,
+			});
 
-	// Pass true to suppress error logging if file doesn't exist (e.g. Default profile)
+			const foundExtensions = new Set<string>();
+
+			for (const entry of entries) {
+				if (entry.isDirectory() && !entry.name.startsWith(".")) {
+					// Format: publisher.name-version
+					// e.g. ms-python.python-2023.1.0
+					const match = entry.name.match(/^(.+)-(\d+\.\d+\.\d+)$/);
+					if (match) {
+						foundExtensions.add(match[1].toLowerCase());
+					}
+				}
+			}
+
+			const result = Array.from(foundExtensions).map((id) => ({
+				identifier: { id },
+			}));
+			Logger.info(
+				`Found ${result.length} extensions in 'Default' profile.`,
+				"Extensions",
+			);
+			return result;
+		} catch (error) {
+			Logger.error(
+				"Failed to scan global extensions directory.",
+				error as Error,
+				"Extensions",
+			);
+			return [];
+		}
+	}
+
+	// For custom profiles, read extensions.json
+	const extensionsPath = path.join(profilePath, "extensions.json");
 	const extensions = await readJSON(extensionsPath, true);
-	// extensions.json usually contains an array of objects with "identifier" property
-	// e.g. [ { "identifier": { "id": "pub.ext" }, ... } ]
 
 	if (Array.isArray(extensions)) {
-		// Logger.info(`Found ${extensions.length} extensions in ${profileName}`, "Extensions");
+		Logger.info(
+			`Found ${extensions.length} extensions in '${profileName}' profile.`,
+			"Extensions",
+		);
 		return extensions;
 	}
 
-	// Logger.info(`No extensions found or invalid format in ${profileName}`, "Extensions");
 	return [];
 }
 
@@ -72,60 +112,55 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 	}
 
 	const currentProfileName = await getCurrentProfileName(context);
-	Logger.info(
-		`Synchronizing extensions for profile '${currentProfileName}'...`,
-		"Extensions",
-	);
 
 	// Get currently installed extensions
 	const currentExtensions = getActiveExtensions();
 	const installedIds = new Set(
 		currentExtensions.map((e) => e.identifier?.id.toLowerCase()),
 	);
+	Logger.info(
+		`Current profile '${currentProfileName}' has ${installedIds.size} extensions installed.`,
+		"Extensions",
+	);
 
 	// Iterate over parents and install missing extensions
+	let totalInstalled = 0;
 	for (const parent of parentProfiles) {
 		const extensions = await getProfileExtensions(context, parent);
+		let installedFromParent = 0;
 
 		for (const ext of extensions) {
 			const id = (ext as Extension).identifier?.id;
-			if (id) {
-				if (!installedIds.has(id.toLowerCase())) {
-					Logger.info(
-						`Installing missing extension '${id}' from parent '${parent}'...`,
-						"Extensions",
+			if (id && !installedIds.has(id.toLowerCase())) {
+				Logger.info(`Installing '${id}' from '${parent}'...`, "Extensions");
+				try {
+					await vscode.commands.executeCommand(
+						"workbench.extensions.installExtension",
+						id,
+						{ donotSync: true },
 					);
-					try {
-						await vscode.commands.executeCommand(
-							"workbench.extensions.installExtension",
-							id,
-							{
-								donotSync: true,
-							},
-						);
-						installedIds.add(id.toLowerCase());
-						Reporter.trackExtension(id, "added");
-					} catch (err) {
-						Logger.error(`Failed to install '${id}'`, err, "Extensions");
-						Reporter.trackExtension(id, "failed");
-					}
-				} else {
-					// Extension already installed, but we want to report it as "synced" or "checked"?
-					// The user complained that "no changes" was reported when extensions were synced.
-					// If they were already there, "No changes" is technically correct.
-					// But if the user *just* ran it and it installed them, it should show up.
-					// If the user ran it *again*, it should show "No changes" for extensions.
-					// Wait, the user said: "quand j'ai fait apply sur le child, ca m'a ouvert le markdown, mais il il m'a dis no changes alors qu'il a bien sync ext + settings"
-					// This implies that extensions WERE installed but NOT reported.
-					// This happens if `installedIds.has(id.toLowerCase())` was TRUE initially?
-					// Or if `vscode.commands.executeCommand` finished but `Reporter.trackExtension` wasn't called?
-					// It is awaited.
-					// Maybe `getActiveExtensions()` returns extensions that are currently *installing*? Unlikely.
-					// Let's add a debug log to see what's happening.
-					// Logger.info(`Extension ${id} already installed.`, "Extensions");
+					installedIds.add(id.toLowerCase());
+					Reporter.trackExtension(id, "added");
+					installedFromParent++;
+				} catch (err) {
+					Logger.error(`Failed to install '${id}'`, err, "Extensions");
+					Reporter.trackExtension(id, "failed");
 				}
 			}
 		}
+
+		if (installedFromParent > 0) {
+			Logger.info(
+				`Installed ${installedFromParent} extensions from '${parent}'.`,
+				"Extensions",
+			);
+		}
+		totalInstalled += installedFromParent;
 	}
-	Logger.info("Extension synchronization complete.", "Extensions");
+
+	if (totalInstalled === 0) {
+		Logger.info("All extensions already installed.", "Extensions");
+	} else {
+		Logger.info(`Total: ${totalInstalled} extensions installed.`, "Extensions");
+	}
 }

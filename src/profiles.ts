@@ -1,9 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { syncExtensions } from "./lib/extensions.js";
-import { syncKeybindings } from "./lib/keybindings.js";
 import { Logger } from "./lib/logger.js";
-import { syncMcp } from "./lib/mcp.js";
 import {
 	getCurrentProfileName,
 	getGlobalStoragePath,
@@ -14,8 +12,6 @@ import {
 	removeInheritedSettingsFromFile,
 	syncSettings,
 } from "./lib/settings.js";
-import { syncSnippets } from "./lib/snippets.js";
-import { syncTasks } from "./lib/tasks.js";
 
 /**
  * Updates the inherited settings for the current profile.
@@ -40,25 +36,16 @@ export async function updateCurrentProfileInheritance(
 	const currentProfileName = await getCurrentProfileName(context);
 
 	Reporter.initialize(currentProfileName, parents);
-	Logger.info("Starting profile inheritance update...", "Main");
+	Logger.info(
+		`Syncing profile '${currentProfileName}' from parents: ${parents.join(", ")}`,
+		"Main",
+	);
 
 	// Sync extensions
 	await syncExtensions(context);
 
 	// Sync settings
 	await syncSettings(context);
-
-	// Sync keybindings
-	await syncKeybindings(context);
-
-	// Sync tasks
-	await syncTasks(context);
-
-	// Sync snippets
-	await syncSnippets(context);
-
-	// Sync MCP servers
-	await syncMcp(context);
 
 	Logger.info("Profile inheritance update completed.", "Main");
 
