@@ -11,7 +11,7 @@
 	},
 	"license": "MIT",
 	"engines": {
-		"vscode": "^1.103.0"
+		"vscode": "^1.107.1"
 	},
 	"categories": [
 		"Other"
@@ -61,17 +61,20 @@
 				"inheritProfile.runOnStartup": {
 					"type": "boolean",
 					"default": true,
-					"description": "Updates the inherited settings when extension starts."
+					"description": "Updates the inherited settings when extension starts.",
+					"order": 1
 				},
 				"inheritProfile.runOnProfileChange": {
 					"type": "boolean",
 					"default": true,
-					"description": "Updates the inherited settings when the current profile is changed."
+					"description": "Updates the inherited settings when the current profile is changed.",
+					"order": 2
 				},
 				"inheritProfile.showSummary": {
 					"type": "boolean",
 					"default": true,
-					"description": "Shows a summary report after synchronization."
+					"description": "Shows a summary report after synchronization.",
+					"order": 3
 				},
 				"inheritProfile.parents": {
 					"type": "array",
@@ -79,37 +82,44 @@
 						"type": "string"
 					},
 					"default": [],
-					"description": "Names of the profiles to inherit settings from."
+					"description": "Names of the profiles to inherit settings from.",
+					"order": 4
 				},
 				"inheritProfile.extensions": {
 					"type": "boolean",
 					"default": true,
-					"description": "Inherit extensions from parent profiles."
+					"description": "Inherit extensions from parent profiles.",
+					"order": 5
 				},
 				"inheritProfile.settings": {
 					"type": "boolean",
 					"default": true,
-					"description": "Inherit settings from parent profiles."
+					"description": "Inherit settings from parent profiles.",
+					"order": 6
 				},
 				"inheritProfile.keybindings": {
 					"type": "boolean",
 					"default": true,
-					"description": "Inherit keybindings from parent profiles."
+					"description": "Inherit keybindings from parent profiles.",
+					"order": 7
 				},
 				"inheritProfile.tasks": {
 					"type": "boolean",
 					"default": true,
-					"description": "Inherit tasks from parent profiles."
+					"description": "Inherit tasks from parent profiles.",
+					"order": 8
 				},
 				"inheritProfile.snippets": {
 					"type": "boolean",
 					"default": true,
-					"description": "Inherit snippets from parent profiles."
+					"description": "Inherit snippets from parent profiles.",
+					"order": 9
 				},
 				"inheritProfile.mcp": {
 					"type": "boolean",
 					"default": true,
-					"description": "Inherit MCP servers from parent profiles."
+					"description": "Inherit MCP servers from parent profiles.",
+					"order": 10
 				}
 			}
 		}
