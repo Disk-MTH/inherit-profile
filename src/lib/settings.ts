@@ -122,8 +122,10 @@ export async function getInheritedSettingsByParent(
 
 	const profileMap = await getProfileMap(context);
 
-	// Process each parent in order
-	for (const profileName of parentProfiles) {
+	// Process each parent in REVERSE order (closest parent first, to allow overrides)
+	const hierarchy = [...parentProfiles].reverse();
+
+	for (const profileName of hierarchy) {
 		const profilePath = profileMap[profileName];
 		if (!profilePath) continue;
 
@@ -355,7 +357,9 @@ export async function syncSettings(
 
 	// Always call writeInheritedSettings to ensure the local header is added,
 	// even if there are no inherited settings.
-	const hierarchy = [...parents].reverse();
+	// Do NOT reverse here. We want to write blocks in standard order (Base -> Derived)
+	// creating a visual flow from generic to specific.
+	const hierarchy = [...parents];
 	const groups: Array<{ name: string; settings: Record<string, string> }> = [];
 	for (const parent of hierarchy) {
 		const settings = byParent.get(parent);
