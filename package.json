@@ -45,9 +45,15 @@
 	"contributes": {
 		"commands": [
 			{
-				"command": "inherit-profile.applyInheritanceToCurrentProfile",
-				"title": "Apply Profile Inheritance (Current Profile)",
+				"command": "inherit-profile.applyInheritance",
+				"title": "Apply inheritance (current profile)",
+				"category": "Inherit Profile",
 				"icon": "combine"
+			},
+			{
+				"command": "inherit-profile.showReportHistory",
+				"title": "Show inheritance report history",
+				"category": "Inherit Profile"
 			}
 		],
 		"configuration": {
@@ -55,7 +61,7 @@
 			"properties": {
 				"inheritProfile.showSummary": {
 					"type": "boolean",
-					"default": true,
+					"default": false,
 					"description": "Shows a summary report after synchronization.",
 					"order": 1
 				},
@@ -65,7 +71,7 @@
 						"type": "string"
 					},
 					"default": [],
-					"description": "Names of the profiles to inherit settings from.",
+					"description": "Names of the profiles to inherit settings from (lowest priority first).",
 					"order": 2
 				},
 				"inheritProfile.extensions": {

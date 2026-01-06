@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { getCurrentProfileName } from "./profileDiscovery.js";
 
 interface ExtensionData {
 	byParent: Map<string, string[]>;
@@ -66,9 +67,6 @@ export const Reporter = {
 
 	async showSummary(context: vscode.ExtensionContext) {
 		const config = vscode.workspace.getConfiguration("inheritProfile");
-		if (!config.get<boolean>("showSummary", false)) {
-			return;
-		}
 
 		const dateStr = Reporter.data.timestamp
 			.toISOString()
@@ -94,8 +92,57 @@ export const Reporter = {
 		const fileUri = vscode.Uri.joinPath(reportsUri, filename);
 		const content = generateMarkdown(Reporter.data);
 
+		// Always write the File to disk (history)
 		await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content));
-		await vscode.commands.executeCommand("markdown.showPreview", fileUri);
+
+		// Show preview ONLY IF config is true
+		if (config.get<boolean>("showSummary", false)) {
+			await vscode.commands.executeCommand("markdown.showPreview", fileUri);
+		}
+	},
+
+	async showHistory(context: vscode.ExtensionContext) {
+		const currentProfile = await getCurrentProfileName(context);
+		const storageUri = context.globalStorageUri;
+		const reportsUri = vscode.Uri.joinPath(storageUri, "reports");
+
+		try {
+			const files = await vscode.workspace.fs.readDirectory(reportsUri);
+			// Filter files starting with profile name
+			const profilePrefix = `${currentProfile}_`;
+			const reportFiles = files
+				.filter(
+					([name, type]) =>
+						type === vscode.FileType.File &&
+						name.startsWith(profilePrefix) &&
+						name.endsWith(".md"),
+				)
+				.map(([name]) => name);
+
+			// Sort by date (descending)
+			// Filename format: Profile_YYYY-MM-DD_HH-mm-ss.md, which is naturally sortable
+			reportFiles.sort((a, b) => b.localeCompare(a));
+
+			if (reportFiles.length === 0) {
+				vscode.window.showInformationMessage(
+					`No history found for profile '${currentProfile}'.`,
+				);
+				return;
+			}
+
+			const selected = await vscode.window.showQuickPick(reportFiles, {
+				placeHolder: `Select a report for '${currentProfile}' to view`,
+			});
+
+			if (selected) {
+				const fileUri = vscode.Uri.joinPath(reportsUri, selected);
+				await vscode.commands.executeCommand("markdown.showPreview", fileUri);
+			}
+		} catch {
+			vscode.window.showInformationMessage(
+				`No reports directory found for '${currentProfile}'.`,
+			);
+		}
 	},
 };
 
@@ -128,9 +175,8 @@ function generateMarkdown(d: SyncData): string {
 		.map((p) => {
 			const hasExt = d.extensions.byParent.has(p);
 			const hasSet = d.settings.byParent.has(p);
-			// Assume skipped if no data found in either map
 			if (!hasExt && !hasSet) {
-				return `\`${p}\` (skipped)`;
+				return `\`${p}\` (no found)`;
 			}
 			return `\`${p}\``;
 		})
