@@ -44,5 +44,5 @@ export async function updateCurrentProfileInheritance(
 	Logger.info("Profile inheritance update completed", "Main");
 	Logger.info("--------------- END ---------------");
 
-	await Reporter.showSummary();
+	await Reporter.showSummary(context);
 }

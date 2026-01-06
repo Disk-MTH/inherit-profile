@@ -7,7 +7,7 @@ interface ExtensionData {
 }
 
 interface SettingsData {
-	byParent: Map<string, string[]>;
+	byParent: Map<string, Record<string, string>>;
 	total: number;
 }
 
@@ -41,11 +41,11 @@ export const Reporter = {
 		}
 	},
 
-	trackSettingsByParent(byParent: Map<string, string[]>) {
+	trackSettingsByParent(byParent: Map<string, Record<string, string>>) {
 		Reporter.data.settings.byParent = byParent;
 		let total = 0;
 		for (const settings of byParent.values()) {
-			total += settings.length;
+			total += Object.keys(settings).length;
 		}
 		Reporter.data.settings.total = total;
 	},
@@ -56,30 +56,46 @@ export const Reporter = {
 	},
 
 	trackSettings(count: number, sources: string[]) {
-		const byParent = new Map<string, string[]>();
+		const byParent = new Map<string, Record<string, string>>();
 		for (const source of sources) {
-			byParent.set(source, []);
+			byParent.set(source, {});
 		}
 		Reporter.data.settings.total = count;
 		Reporter.data.settings.byParent = byParent;
 	},
 
-	async showSummary() {
+	async showSummary(context: vscode.ExtensionContext) {
 		const config = vscode.workspace.getConfiguration("inheritProfile");
 		if (!config.get<boolean>("showSummary", false)) {
 			return;
 		}
 
+		const dateStr = Reporter.data.timestamp
+			.toISOString()
+			.replace(/[:.]/g, "-")
+			.split("T")
+			.join("_");
+		const filename = `${Reporter.data.profileName}_${dateStr}.md`;
+		const storageUri = context.globalStorageUri;
+
+		try {
+			await vscode.workspace.fs.createDirectory(storageUri);
+		} catch {
+			// Ignore if exists
+		}
+
+		const reportsUri = vscode.Uri.joinPath(storageUri, "reports");
+		try {
+			await vscode.workspace.fs.createDirectory(reportsUri);
+		} catch {
+			// Ignore if exists
+		}
+
+		const fileUri = vscode.Uri.joinPath(reportsUri, filename);
 		const content = generateMarkdown(Reporter.data);
 
-		const uri = vscode.Uri.parse("untitled:Profile Sync Summary.md");
-		const doc = await vscode.workspace.openTextDocument(uri);
-
-		const edit = new vscode.WorkspaceEdit();
-		edit.replace(uri, new vscode.Range(0, 0, doc.lineCount, 0), content);
-		await vscode.workspace.applyEdit(edit);
-
-		await vscode.commands.executeCommand("markdown.showPreview", uri);
+		await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content));
+		await vscode.commands.executeCommand("markdown.showPreview", fileUri);
 	},
 };
 
@@ -148,20 +164,19 @@ function generateMarkdown(d: SyncData): string {
 			md += "<details>\n";
 			md += `<summary>From <strong>"${label}"</strong> - ${exts.length} extensions${installedStr}</summary>\n\n`;
 
+			md += "| Extension ID | State |\n";
+			md += "| :--- | :--- |\n";
 			for (const id of exts) {
 				const isInstalled = d.extensions.installed.includes(id);
 				const isFailed = d.extensions.failed.includes(id);
 
-				let icon = "✓";
-				let note = "";
+				let state = "✅ Present";
 				if (isInstalled) {
-					icon = "✅";
-					note = " (installed)";
+					state = "📥 Installed";
 				} else if (isFailed) {
-					icon = "❌";
-					note = " (failed)";
+					state = "❌ Error";
 				}
-				md += `- ${icon} \`${id}\`${note}\n`;
+				md += `| \`${id}\` | ${state} |\n`;
 			}
 			md += "\n</details>\n\n";
 
@@ -184,21 +199,27 @@ function generateMarkdown(d: SyncData): string {
 
 	for (const profile of hierarchy) {
 		const settings = d.settings.byParent.get(profile);
-		if (settings && settings.length > 0) {
+		if (settings && Object.keys(settings).length > 0) {
 			const isChild = profile === d.profileName;
 			const label = isChild ? `${profile} (current)` : profile;
+			const settingKeys = Object.keys(settings);
 
 			md += "<details>\n";
-			md += `<summary>From <strong>"${label}"</strong> - ${settings.length} settings</summary>\n\n`;
+			md += `<summary>From <strong>"${label}"</strong> - ${settingKeys.length} settings</summary>\n\n`;
 
-			for (const key of settings) {
-				md += `- \`${key}\`\n`;
+			md += "| Key | Value |\n";
+			md += "| :--- | :--- |\n";
+			for (const [key, value] of Object.entries(settings)) {
+				const valueStr = JSON.stringify(value);
+				const escapedValue =
+					valueStr.length > 50 ? valueStr.slice(0, 50) + "..." : valueStr;
+				md += `| \`${key}\` | \`${escapedValue}\` |\n`;
 			}
 			md += "\n</details>\n\n";
 
-			totalSettings += settings.length;
+			totalSettings += settingKeys.length;
 			if (!isChild) {
-				inheritedSettings += settings.length;
+				inheritedSettings += settingKeys.length;
 			}
 		}
 	}

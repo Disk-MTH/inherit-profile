@@ -96,7 +96,7 @@ export async function getCurrentProfileSettings(
 export async function getInheritedSettingsByParent(
 	context: vscode.ExtensionContext,
 ): Promise<{
-	byParent: Map<string, string[]>;
+	byParent: Map<string, Record<string, string>>;
 	merged: Record<string, string>;
 }> {
 	const currentProfileSettings = await getCurrentProfileSettings(context);
@@ -104,16 +104,18 @@ export async function getInheritedSettingsByParent(
 	const config = vscode.workspace.getConfiguration("inheritProfile");
 	const parentProfiles = config.get<string[]>("parents", []);
 
-	const byParent = new Map<string, string[]>();
+	const byParent = new Map<string, Record<string, string>>();
 	const alreadyInherited = new Set<string>();
 
 	// Add local settings first
 	const localSettings = Object.keys(currentProfileSettings).sort();
 	if (localSettings.length > 0) {
-		byParent.set(currentProfileName, localSettings);
+		const localSettingsRecord: Record<string, string> = {};
 		for (const key of localSettings) {
+			localSettingsRecord[key] = currentProfileSettings[key];
 			alreadyInherited.add(key);
 		}
+		byParent.set(currentProfileName, localSettingsRecord);
 	}
 
 	let merged: Record<string, string> = {};
@@ -127,18 +129,18 @@ export async function getInheritedSettingsByParent(
 
 		const profileSettings = await readProfileSettings(profilePath);
 
-		const newFromThisParent: string[] = [];
+		const newFromThisParent: Record<string, string> = {};
 
 		for (const key of Object.keys(profileSettings)) {
 			if (!alreadyInherited.has(key)) {
-				newFromThisParent.push(key);
+				newFromThisParent[key] = profileSettings[key];
 				alreadyInherited.add(key);
 				merged[key] = profileSettings[key];
 			}
 		}
 
-		if (newFromThisParent.length > 0) {
-			byParent.set(profileName, newFromThisParent.sort());
+		if (Object.keys(newFromThisParent).length > 0) {
+			byParent.set(profileName, sortSettings(newFromThisParent));
 		}
 	}
 
