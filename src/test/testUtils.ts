@@ -14,6 +14,7 @@ export class TestEnvironment {
 	public globalStorageDir: string;
 	public extensionStorageDir: string;
 	public profilesDir: string;
+	public vscodeExtensionsDir: string;
 
 	constructor() {
 		this.rootDir = path.join(os.tmpdir(), `inherit-profile-test-${Date.now()}`);
@@ -24,11 +25,13 @@ export class TestEnvironment {
 			"inherit-profile",
 		);
 		this.profilesDir = path.join(this.userDir, "profiles");
+		this.vscodeExtensionsDir = path.join(this.rootDir, ".vscode", "extensions");
 	}
 
 	public async setup() {
 		await fs.mkdir(this.extensionStorageDir, { recursive: true });
 		await fs.mkdir(this.profilesDir, { recursive: true });
+		await fs.mkdir(this.vscodeExtensionsDir, { recursive: true });
 		Logger.initialize(this.getContext());
 	}
 
@@ -104,12 +107,22 @@ export class TestEnvironment {
 		return profilePath;
 	}
 
-	// biome-ignore lint/suspicious/noExplicitAny: Test data
-	public async createDefaultProfile(settings: any = {}) {
+	public async createDefaultProfile(
+		// biome-ignore lint/suspicious/noExplicitAny: Test data
+		settings: any = {},
+		// biome-ignore lint/suspicious/noExplicitAny: Test data
+		extensions: any[] = [],
+	) {
 		await fs.writeFile(
 			path.join(this.userDir, "settings.json"),
 			JSON.stringify(settings, null, 4),
 		);
+		if (extensions.length > 0) {
+			await fs.writeFile(
+				path.join(this.vscodeExtensionsDir, "extensions.json"),
+				JSON.stringify(extensions, null, 4),
+			);
+		}
 	}
 
 	public async setStorageJson(

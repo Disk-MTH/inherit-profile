@@ -1,4 +1,4 @@
-import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { Logger } from "./logger.js";
@@ -8,6 +8,14 @@ import { readJSON } from "./utils.js";
 
 interface Extension {
 	identifier?: { id: string };
+}
+
+/**
+ * Gets the path to the global extensions directory.
+ * Default: ~/.vscode/extensions
+ */
+export function getGlobalExtensionsDir(): string {
+	return path.join(os.homedir(), ".vscode", "extensions");
 }
 
 /**
@@ -24,12 +32,14 @@ export function getActiveExtensions(): Extension[] {
  * Gets the list of extensions for a given profile from disk.
  * @param context Extension context.
  * @param profileName Name of the profile.
- * @returns List of extensions (identifiers).
+ * @param globalExtensionsDir Optional override for global extensions directory (for testing).
+ * @returns List of extension IDs.
  */
 export async function getProfileExtensions(
 	context: vscode.ExtensionContext,
 	profileName: string,
-): Promise<unknown[]> {
+	globalExtensionsDir?: string,
+): Promise<string[]> {
 	const profileMap = await getProfileMap(context);
 	const profilePath = profileMap[profileName];
 	if (!profilePath) {
@@ -37,64 +47,68 @@ export async function getProfileExtensions(
 		return [];
 	}
 
-	// For Default profile, scan the global extensions directory
-	if (profileName === "Default") {
-		try {
-			// context.extensionPath is e.g. /Users/user/.vscode/extensions/my-ext-version
-			// So parent dir is /Users/user/.vscode/extensions
-			const extensionsDir = path.dirname(context.extensionPath);
-			const entries = await fs.readdir(extensionsDir, {
-				withFileTypes: true,
-			});
+	// Default profile uses ~/.vscode/extensions/extensions.json
+	// Custom profiles use their own extensions.json in their profile folder
+	const isDefault = profileName === "Default";
+	const extensionsPath = isDefault
+		? path.join(
+				globalExtensionsDir ?? getGlobalExtensionsDir(),
+				"extensions.json",
+			)
+		: path.join(profilePath, "extensions.json");
 
-			const foundExtensions = new Set<string>();
-
-			for (const entry of entries) {
-				if (entry.isDirectory() && !entry.name.startsWith(".")) {
-					// Format: publisher.name-version
-					// e.g. ms-python.python-2023.1.0
-					const match = entry.name.match(/^(.+)-(\d+\.\d+\.\d+)$/);
-					if (match) {
-						foundExtensions.add(match[1].toLowerCase());
-					}
-				}
-			}
-
-			const result = Array.from(foundExtensions).map((id) => ({
-				identifier: { id },
-			}));
-			Logger.info(
-				`Found ${result.length} extensions in 'Default' profile.`,
-				"Extensions",
-			);
-			return result;
-		} catch (error) {
-			Logger.error(
-				"Failed to scan global extensions directory.",
-				error as Error,
-				"Extensions",
-			);
-			return [];
-		}
-	}
-
-	// For custom profiles, read extensions.json
-	const extensionsPath = path.join(profilePath, "extensions.json");
 	const extensions = await readJSON(extensionsPath, true);
 
 	if (Array.isArray(extensions)) {
+		// Extract extension IDs from the extensions.json format
+		const ids = extensions
+			.map((ext: Extension) => ext.identifier?.id)
+			.filter((id): id is string => typeof id === "string");
 		Logger.info(
-			`Found ${extensions.length} extensions in '${profileName}' profile.`,
+			`Found ${ids.length} extensions in '${profileName}' profile.`,
 			"Extensions",
 		);
-		return extensions;
+		return ids;
 	}
 
+	Logger.warn(
+		`No extensions.json found for '${profileName}' profile.`,
+		"Extensions",
+	);
 	return [];
 }
 
 /**
+ * Merges extensions from parent profiles using hierarchy rules.
+ * Later parents override earlier parents, child overrides all.
+ * @param parentProfiles List of parent profile names (in order).
+ * @param context Extension context.
+ * @returns Set of extension IDs to inherit.
+ */
+export async function mergeParentExtensions(
+	context: vscode.ExtensionContext,
+	parentProfiles: string[],
+): Promise<Set<string>> {
+	const mergedExtensions = new Set<string>();
+
+	// Process parents in order - later parents override earlier ones
+	for (const parent of parentProfiles) {
+		const extensions = await getProfileExtensions(context, parent);
+		for (const id of extensions) {
+			mergedExtensions.add(id.toLowerCase());
+		}
+		Logger.info(
+			`Merged ${extensions.length} extensions from '${parent}'.`,
+			"Extensions",
+		);
+	}
+
+	return mergedExtensions;
+}
+
+/**
  * Synchronizes extensions from parent profiles to the current profile.
+ * Uses hierarchy: parents are merged in order, child profile prevails.
  */
 export async function syncExtensions(context: vscode.ExtensionContext) {
 	const config = vscode.workspace.getConfiguration("inheritProfile");
@@ -104,8 +118,6 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 		return;
 	}
 
-	Logger.section("Extensions Sync");
-
 	const parentProfiles = config.get<string[]>("parents", []);
 	if (parentProfiles.length === 0) {
 		return;
@@ -113,54 +125,63 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 
 	const currentProfileName = await getCurrentProfileName(context);
 
-	// Get currently installed extensions
+	// Get currently installed extensions (child profile)
 	const currentExtensions = getActiveExtensions();
 	const installedIds = new Set(
-		currentExtensions.map((e) => e.identifier?.id.toLowerCase()),
+		currentExtensions
+			.map((e) => e.identifier?.id.toLowerCase())
+			.filter((id): id is string => !!id),
 	);
 	Logger.info(
-		`Current profile '${currentProfileName}' has ${installedIds.size} extensions installed.`,
+		`Current profile '${currentProfileName}' has ${installedIds.size} extensions.`,
 		"Extensions",
 	);
 
-	// Iterate over parents and install missing extensions
-	let totalInstalled = 0;
-	for (const parent of parentProfiles) {
-		const extensions = await getProfileExtensions(context, parent);
-		let installedFromParent = 0;
+	// Merge all parent extensions using hierarchy
+	const parentExtensions = await mergeParentExtensions(context, parentProfiles);
+	Logger.info(
+		`Parents provide ${parentExtensions.size} unique extensions.`,
+		"Extensions",
+	);
 
-		for (const ext of extensions) {
-			const id = (ext as Extension).identifier?.id;
-			if (id && !installedIds.has(id.toLowerCase())) {
-				Logger.info(`Installing '${id}' from '${parent}'...`, "Extensions");
-				try {
-					await vscode.commands.executeCommand(
-						"workbench.extensions.installExtension",
-						id,
-						{ donotSync: true },
-					);
-					installedIds.add(id.toLowerCase());
-					Reporter.trackExtension(id, "added");
-					installedFromParent++;
-				} catch (err) {
-					Logger.error(`Failed to install '${id}'`, err, "Extensions");
-					Reporter.trackExtension(id, "failed");
-				}
-			}
+	// Find extensions to install (in parents but not in child)
+	const toInstall: string[] = [];
+	for (const id of parentExtensions) {
+		if (!installedIds.has(id)) {
+			toInstall.push(id);
 		}
+	}
 
-		if (installedFromParent > 0) {
-			Logger.info(
-				`Installed ${installedFromParent} extensions from '${parent}'.`,
-				"Extensions",
+	if (toInstall.length === 0) {
+		Logger.info("All parent extensions already installed.", "Extensions");
+		return;
+	}
+
+	Logger.info(
+		`Installing ${toInstall.length} extensions from parents...`,
+		"Extensions",
+	);
+
+	// Install missing extensions
+	let installed = 0;
+	for (const id of toInstall) {
+		Logger.info(`Installing '${id}'...`, "Extensions");
+		try {
+			await vscode.commands.executeCommand(
+				"workbench.extensions.installExtension",
+				id,
+				{ donotSync: true },
 			);
+			Reporter.trackExtension(id, "added");
+			installed++;
+		} catch (err) {
+			Logger.error(`Failed to install '${id}'`, err, "Extensions");
+			Reporter.trackExtension(id, "failed");
 		}
-		totalInstalled += installedFromParent;
 	}
 
-	if (totalInstalled === 0) {
-		Logger.info("All extensions already installed.", "Extensions");
-	} else {
-		Logger.info(`Total: ${totalInstalled} extensions installed.`, "Extensions");
-	}
+	Logger.info(
+		`Installed ${installed}/${toInstall.length} extensions.`,
+		"Extensions",
+	);
 }

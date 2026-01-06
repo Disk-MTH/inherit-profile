@@ -1,8 +1,5 @@
 import * as vscode from "vscode";
-import {
-	removeCurrentProfileInheritedSettings,
-	updateCurrentProfileInheritance,
-} from "./profiles";
+import { updateCurrentProfileInheritance } from "./profiles";
 
 export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
@@ -10,14 +7,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			"inherit-profile.applyInheritanceToCurrentProfile",
 			async () => {
 				await updateCurrentProfileInheritance(context);
-			},
-		),
-	);
-	context.subscriptions.push(
-		vscode.commands.registerCommand(
-			"inherit-profile.removeInheritedSettingsFromCurrentProfile",
-			async () => {
-				await removeCurrentProfileInheritedSettings(context);
 			},
 		),
 	);

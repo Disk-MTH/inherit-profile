@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { syncExtensions } from "../lib/extensions";
+import { getProfileExtensions, syncExtensions } from "../lib/extensions";
 import { Reporter } from "../lib/reporter";
 import { TestEnvironment } from "./testUtils";
 
@@ -85,5 +85,33 @@ suite("Extensions Sync Test Suite", () => {
 			"Should not add already installed extension",
 		);
 		assert.strictEqual(data.extensions.failed.length, 0, "Should not fail");
+	});
+
+	test("Default profile reads from global extensions directory", async () => {
+		// Setup: Default profile with extensions in ~/.vscode/extensions/extensions.json
+		await env.createDefaultProfile({}, [
+			{ identifier: { id: "test.default-ext-1" } },
+			{ identifier: { id: "test.default-ext-2" } },
+		]);
+
+		await env.setStorageJson([], "Default");
+
+		// Get extensions using the test environment's vscodeExtensionsDir
+		const extensions = await getProfileExtensions(
+			env.getContext(),
+			"Default",
+			env.vscodeExtensionsDir,
+		);
+
+		// Verify we found the extensions from the global extensions directory
+		assert.strictEqual(extensions.length, 2, "Should find 2 extensions");
+		assert.ok(
+			extensions.includes("test.default-ext-1"),
+			"Should include test.default-ext-1",
+		);
+		assert.ok(
+			extensions.includes("test.default-ext-2"),
+			"Should include test.default-ext-2",
+		);
 	});
 });

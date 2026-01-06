@@ -34,12 +34,4 @@ export class Logger {
 		console.error(log);
 		Logger.channel.appendLine(log);
 	}
-
-	public static section(title: string) {
-		const line = "-".repeat(50);
-		Logger.channel.appendLine("");
-		Logger.channel.appendLine(line);
-		Logger.channel.appendLine(` ${title.toUpperCase()}`);
-		Logger.channel.appendLine(line);
-	}
 }
