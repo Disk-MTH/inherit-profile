@@ -11,8 +11,8 @@ import {
 } from "./lib/profileDiscovery.js";
 import { Reporter } from "./lib/reporter.js";
 import {
-	applyInheritedSettings,
 	removeInheritedSettingsFromFile,
+	syncSettings,
 } from "./lib/settings.js";
 import { syncSnippets } from "./lib/snippets.js";
 import { syncTasks } from "./lib/tasks.js";
@@ -46,7 +46,7 @@ export async function updateCurrentProfileInheritance(
 	await syncExtensions(context);
 
 	// Sync settings
-	await applyInheritedSettings(context);
+	await syncSettings(context);
 
 	// Sync keybindings
 	await syncKeybindings(context);
@@ -76,8 +76,10 @@ export async function removeCurrentProfileInheritedSettings(
 	const profiles = await getProfileMap(context);
 	const currentProfileDirectory = profiles[currentProfileName];
 	if (!currentProfileDirectory) {
-		console.error(
+		Logger.error(
 			`Unable to find current profile directory for \`${currentProfileName}\` profile.`,
+			undefined,
+			"Main",
 		);
 	}
 	const currentProfilePath = path.join(
@@ -106,8 +108,9 @@ export async function updateInheritedSettingsOnProfileChange(
 		const newProfileName = await getCurrentProfileName(context);
 		if (newProfileName !== currentProfile) {
 			currentProfile = newProfileName;
-			console.info(
+			Logger.info(
 				"Current profile has changed, updating inherited settings...",
+				"Main",
 			);
 			await updateCurrentProfileInheritance(context);
 		}

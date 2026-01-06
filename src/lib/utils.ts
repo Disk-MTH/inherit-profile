@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import { parse } from "jsonc-parser";
+import { Logger } from "./logger";
 
 /**
  * Reads JSONC (JSON with comments).
@@ -16,7 +17,11 @@ export async function readJSON(
 		return parse(raw); // handles // and /* */ comments
 	} catch (error) {
 		if (!silent) {
-			console.error(`Failed to read JSONC at ${filePath}:`, error);
+			Logger.error(
+				`Failed to read JSONC at ${filePath}:`,
+				error as Error,
+				"Utils",
+			);
 		}
 		return {};
 	}
@@ -334,8 +339,9 @@ export function insertBeforeClose(beforeClose: string, block: string): string {
 	// Check last non-comment character:
 	const meaningfulCharIndex = getLastMeaningfulCharacterIndex(beforeClose);
 	if (meaningfulCharIndex === -1) {
-		console.warn(
+		Logger.warn(
 			"No meaningful text found when attempting to insert `block` after `beforeClose`.",
+			"Utils",
 		);
 		return beforeClose.replace(/\s*$/, "\n") + block;
 	}

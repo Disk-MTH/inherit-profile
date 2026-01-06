@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { Reporter } from "../lib/reporter";
-import { applyInheritedSettings } from "../lib/settings";
+import { syncSettings } from "../lib/settings";
 import { TestEnvironment } from "./testUtils";
 
 suite("Settings Sync Test Suite", () => {
@@ -51,7 +51,7 @@ suite("Settings Sync Test Suite", () => {
 			.update("parents", ["Parent"], vscode.ConfigurationTarget.Global);
 
 		// Execute
-		await applyInheritedSettings(env.getContext());
+		await syncSettings(env.getContext());
 
 		// Verify
 		const childSettingsPath = path.join(
@@ -106,7 +106,7 @@ suite("Settings Sync Test Suite", () => {
 			.update("parents", ["Parent"], vscode.ConfigurationTarget.Global);
 
 		// Execute
-		await applyInheritedSettings(env.getContext());
+		await syncSettings(env.getContext());
 
 		// Verify
 		const childSettingsPath = path.join(

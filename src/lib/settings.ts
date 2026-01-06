@@ -245,7 +245,7 @@ function buildInheritedSettingsBlock(
  * Applies the inherited settings to the current profile.
  * @param context Extension context.
  */
-export async function applyInheritedSettings(
+export async function syncSettings(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
 	// Get the path to the current profile settings:
