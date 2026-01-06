@@ -184,12 +184,25 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 
 	// Track extensions by parent for reporting
 	const extensionsByParent = new Map<string, string[]>();
+
+	// Add parent extensions
 	for (const [id, source] of parentExtensions) {
 		if (!extensionsByParent.has(source)) {
 			extensionsByParent.set(source, []);
 		}
 		extensionsByParent.get(source)?.push(id);
 	}
+
+	// Add local unique extensions (those not in any parent)
+	const localExtensions = new Set(installedIds);
+	for (const [id] of parentExtensions) {
+		localExtensions.delete(id);
+	}
+
+	if (localExtensions.size > 0) {
+		extensionsByParent.set(currentProfileName, Array.from(localExtensions));
+	}
+
 	Reporter.trackExtensionsByParent(extensionsByParent);
 
 	// Install missing extensions

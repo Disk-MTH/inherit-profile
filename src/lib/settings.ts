@@ -92,11 +92,22 @@ export async function getInheritedSettingsByParent(
 	merged: Record<string, string>;
 }> {
 	const currentProfileSettings = await getCurrentProfileSettings(context);
+	const currentProfileName = await getCurrentProfileName(context);
 	const config = vscode.workspace.getConfiguration("inheritProfile");
 	const parentProfiles = config.get<string[]>("parents", []);
 
 	const byParent = new Map<string, string[]>();
-	const alreadyInherited = new Set<string>(Object.keys(currentProfileSettings));
+	const alreadyInherited = new Set<string>();
+
+	// Add local settings first
+	const localSettings = Object.keys(currentProfileSettings).sort();
+	if (localSettings.length > 0) {
+		byParent.set(currentProfileName, localSettings);
+		for (const key of localSettings) {
+			alreadyInherited.add(key);
+		}
+	}
+
 	let merged: Record<string, string> = {};
 
 	const profileMap = await getProfileMap(context);

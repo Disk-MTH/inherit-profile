@@ -107,11 +107,22 @@ export class Reporter {
 		const d = Reporter.data;
 		const time = d.timestamp.toLocaleTimeString();
 
+		// Build hierarchy: Child → Last Parent → ... → First Parent (strongest override first)
+		const hierarchy = [d.profileName, ...d.parents.slice().reverse()];
+
 		let md = "# 📋 Profile Sync Summary\n\n";
 		md += "| Profile | Time |\n";
 		md += "| :--- | :--- |\n";
 		md += `| \`${d.profileName}\` | ${time} |\n\n`;
 		md += `**Inheriting from:** ${d.parents.map((p) => `\`${p}\``).join(" → ") || "None"}\n\n`;
+		md += "---\n\n";
+
+		// Override hierarchy explanation
+		md += "## 📊 Override Hierarchy\n\n";
+		md += "> Sorted by **strongest override first**. ";
+		md +=
+			"Settings and extensions from profiles higher in this list take precedence.\n\n";
+		md += `**${hierarchy.map((p) => `\`${p}\``).join(" → ")}**\n\n`;
 		md += "---\n\n";
 
 		// Extensions Section
@@ -123,11 +134,15 @@ export class Reporter {
 		if (!hasChanges && d.extensions.byParent.size === 0) {
 			md += "✅ All extensions already in sync.\n\n";
 		} else {
-			// Show by parent
-			for (const parent of d.parents) {
-				const extensions = d.extensions.byParent.get(parent);
+			// Show by hierarchy order (strongest override first)
+			for (const profile of hierarchy) {
+				const extensions = d.extensions.byParent.get(profile);
 				if (extensions && extensions.length > 0) {
-					md += `### From \`${parent}\` (${extensions.length})\n\n`;
+					const isChild = profile === d.profileName;
+					const label = isChild ? `${profile} (child)` : profile;
+
+					md += `<details>\n`;
+					md += `<summary><strong>From \`${label}\`</strong> (${extensions.length} extensions)</summary>\n\n`;
 					for (const id of extensions) {
 						const isInstalled = d.extensions.installed.includes(id);
 						const isFailed = d.extensions.failed.includes(id);
@@ -143,7 +158,7 @@ export class Reporter {
 						}
 						md += `- ${icon} \`${id}\`${note}\n`;
 					}
-					md += "\n";
+					md += "\n</details>\n\n";
 				}
 			}
 
@@ -166,10 +181,15 @@ export class Reporter {
 		if (d.settings.total === 0) {
 			md += "✅ All settings already up to date.\n\n";
 		} else {
-			for (const parent of d.parents) {
-				const settings = d.settings.byParent.get(parent);
+			// Show by hierarchy order (strongest override first)
+			for (const profile of hierarchy) {
+				const settings = d.settings.byParent.get(profile);
 				if (settings && settings.length > 0) {
-					md += `### From \`${parent}\` (${settings.length})\n\n`;
+					const isChild = profile === d.profileName;
+					const label = isChild ? `${profile} (child)` : profile;
+
+					md += `<details>\n`;
+					md += `<summary><strong>From \`${label}\`</strong> (${settings.length} settings)</summary>\n\n`;
 					const displaySettings =
 						settings.length > 15 ? settings.slice(0, 15) : settings;
 					for (const key of displaySettings) {
@@ -178,7 +198,7 @@ export class Reporter {
 					if (settings.length > 15) {
 						md += `- ... and ${settings.length - 15} more\n`;
 					}
-					md += "\n";
+					md += "\n</details>\n\n";
 				}
 			}
 			md += `**Total:** ${d.settings.total} settings inherited\n\n`;
