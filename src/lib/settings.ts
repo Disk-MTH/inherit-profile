@@ -23,9 +23,9 @@ const INHERITED_SETTINGS_END_MARKER =
 	"// --- INHERITED SETTINGS MARKER END --- //";
 
 const WARNING_COMMENT =
-	"// WARNING: Do not remove the inherited settings start and end markers.";
+	"// WARNING: Do not remove the inherited settings start and end markers";
 const WARNING_EXPLAIN =
-	"//          The markers are used to identify inserted inherited settings.";
+	"//          The markers are used to identify inserted inherited settings";
 
 /**
  * Collects the settings for each of the profiles.
@@ -57,7 +57,7 @@ export async function getProfileSettings(
 		const count = Object.keys(profileSettings).length;
 		if (count > 0) {
 			Logger.info(
-				`Found ${count} settings in '${profileName}' profile.`,
+				`Found ${count} settings in '${profileName}' profile`,
 				"Settings",
 			);
 		}
@@ -125,7 +125,7 @@ export async function removeInheritedSettingsFromFile(
 	if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
 		if (startIndex !== endIndex) {
 			Logger.warn(
-				"Either the start or end marker is missing in the current profile.",
+				"Either the start or end marker is missing in the current profile",
 				"Settings",
 			);
 		}
@@ -229,7 +229,7 @@ export async function syncSettings(
 	const currentProfileDirectory = profiles[currentProfileName];
 	if (!currentProfileDirectory) {
 		Logger.error(
-			`Unable to find current profile directory for \`${currentProfileName}\` profile.`,
+			`Unable to find current profile directory for \`${currentProfileName}\` profile`,
 			undefined,
 			"Settings",
 		);
@@ -257,7 +257,7 @@ export async function syncSettings(
 	}
 
 	Logger.info(
-		`Inheriting ${totalInheritedSettings} settings from parents.`,
+		`Inheriting ${totalInheritedSettings} settings from parents`,
 		"Settings",
 	);
 

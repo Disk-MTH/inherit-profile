@@ -65,14 +65,14 @@ export async function getProfileExtensions(
 			.map((ext: Extension) => ext.identifier?.id)
 			.filter((id): id is string => typeof id === "string");
 		Logger.info(
-			`Found ${ids.length} extensions in '${profileName}' profile.`,
+			`Found ${ids.length} extensions in '${profileName}' profile`,
 			"Extensions",
 		);
 		return ids;
 	}
 
 	Logger.warn(
-		`No extensions.json found for '${profileName}' profile.`,
+		`No extensions.json found for '${profileName}' profile`,
 		"Extensions",
 	);
 	return [];
@@ -98,7 +98,7 @@ export async function mergeParentExtensions(
 			mergedExtensions.add(id.toLowerCase());
 		}
 		Logger.info(
-			`Merged ${extensions.length} extensions from '${parent}'.`,
+			`Merged ${extensions.length} extensions from '${parent}'`,
 			"Extensions",
 		);
 	}
@@ -133,14 +133,14 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 			.filter((id): id is string => !!id),
 	);
 	Logger.info(
-		`Current profile '${currentProfileName}' has ${installedIds.size} extensions.`,
+		`Current profile '${currentProfileName}' has ${installedIds.size} extensions`,
 		"Extensions",
 	);
 
 	// Merge all parent extensions using hierarchy
 	const parentExtensions = await mergeParentExtensions(context, parentProfiles);
 	Logger.info(
-		`Parents provide ${parentExtensions.size} unique extensions.`,
+		`Parents provide ${parentExtensions.size} unique extensions`,
 		"Extensions",
 	);
 
@@ -181,7 +181,7 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 	}
 
 	Logger.info(
-		`Installed ${installed}/${toInstall.length} extensions.`,
+		`Installed ${installed}/${toInstall.length} extensions`,
 		"Extensions",
 	);
 }
