@@ -1,10 +1,10 @@
-import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import * as vscode from "vscode";
-import { getCurrentProfileName, getProfileMap } from "./profileDiscovery.js";
-import { readJSON } from "./utils.js";
 import { Logger } from "./logger.js";
+import { getCurrentProfileName, getProfileMap } from "./profileDiscovery.js";
 import { Reporter } from "./reporter.js";
+import { readJSON } from "./utils.js";
 
 interface Task {
 	label: string;
@@ -48,35 +48,45 @@ export async function syncTasks(context: vscode.ExtensionContext) {
 
 		const tasksPath = path.join(parentPath, "tasks.json");
 		const tasksObj = (await readJSON(tasksPath, true)) as TasksFile;
-		
+
 		if (tasksObj && Array.isArray(tasksObj.tasks)) {
-			Logger.info(`Loaded ${tasksObj.tasks.length} tasks from parent '${parent}'.`, "Tasks");
+			Logger.info(
+				`Loaded ${tasksObj.tasks.length} tasks from parent '${parent}'.`,
+				"Tasks",
+			);
 			aggregatedTasks = [...aggregatedTasks, ...tasksObj.tasks];
 		}
 	}
 
 	// 2. Sync with Current Profile
 	const currentTasksPath = path.join(currentProfilePath, "tasks.json");
-	
-	try {
-		const currentTasksObj = (await readJSON(currentTasksPath, true)) as TasksFile;
-		const userTasks = (currentTasksObj && Array.isArray(currentTasksObj.tasks))
-			? currentTasksObj.tasks.filter((t: any) => !t.__inherited)
-			: [];
 
-		const newInheritedTasks = aggregatedTasks.map(t => ({ ...t, __inherited: true }));
-		
+	try {
+		const currentTasksObj = (await readJSON(
+			currentTasksPath,
+			true,
+		)) as TasksFile;
+		const userTasks =
+			currentTasksObj && Array.isArray(currentTasksObj.tasks)
+				? // biome-ignore lint/suspicious/noExplicitAny: Task object structure is dynamic
+					currentTasksObj.tasks.filter((t: any) => !t.__inherited)
+				: [];
+
+		const newInheritedTasks = aggregatedTasks.map((t) => ({
+			...t,
+			__inherited: true,
+		}));
+
 		const finalTasks = [...newInheritedTasks, ...userTasks];
-		
+
 		const output: TasksFile = {
 			version: currentTasksObj?.version || "2.0.0",
-			tasks: finalTasks
+			tasks: finalTasks,
 		};
 
 		await fs.writeFile(currentTasksPath, JSON.stringify(output, null, 4));
 		Logger.info(`Synced ${newInheritedTasks.length} inherited tasks.`, "Tasks");
 		Reporter.trackTasks(newInheritedTasks.length);
-
 	} catch (error) {
 		Logger.error("Failed to sync tasks", error, "Tasks");
 	}

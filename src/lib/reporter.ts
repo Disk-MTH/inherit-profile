@@ -12,6 +12,7 @@ interface SyncData {
 	timestamp: Date;
 }
 
+// biome-ignore lint/complexity/noStaticOnlyClass: Utility class
 export class Reporter {
 	private static data: SyncData = Reporter.createEmptyData();
 
@@ -30,36 +31,36 @@ export class Reporter {
 	}
 
 	public static initialize(profileName: string, parents: string[]) {
-		this.data = this.createEmptyData();
-		this.data.profileName = profileName;
-		this.data.parents = parents;
-		this.data.timestamp = new Date();
+		Reporter.data = Reporter.createEmptyData();
+		Reporter.data.profileName = profileName;
+		Reporter.data.parents = parents;
+		Reporter.data.timestamp = new Date();
 	}
 
 	public static trackExtension(id: string, status: "added" | "failed") {
-		if (status === "added") this.data.extensions.added.push(id);
-		else this.data.extensions.failed.push(id);
+		if (status === "added") Reporter.data.extensions.added.push(id);
+		else Reporter.data.extensions.failed.push(id);
 	}
 
 	public static trackSettings(count: number, sources: string[]) {
-		this.data.settings.inherited = count;
-		this.data.settings.sources = sources;
+		Reporter.data.settings.inherited = count;
+		Reporter.data.settings.sources = sources;
 	}
 
 	public static trackKeybindings(count: number) {
-		this.data.keybindings.inherited = count;
+		Reporter.data.keybindings.inherited = count;
 	}
 
 	public static trackTasks(count: number) {
-		this.data.tasks.inherited = count;
+		Reporter.data.tasks.inherited = count;
 	}
 
 	public static trackSnippet(file: string) {
-		this.data.snippets.files.push(file);
+		Reporter.data.snippets.files.push(file);
 	}
 
 	public static trackMcp(serverName: string) {
-		this.data.mcp.servers.push(serverName);
+		Reporter.data.mcp.servers.push(serverName);
 	}
 
 	public static async showSummary() {
@@ -68,14 +69,14 @@ export class Reporter {
 			return;
 		}
 
-		const content = this.generateMarkdown();
-		
+		const content = Reporter.generateMarkdown();
+
 		// Strategy: Use `vscode.workspace.openTextDocument` but DO NOT `showTextDocument`.
 		// Then run `markdown.showPreview`.
-		
+
 		const uri = vscode.Uri.parse(`untitled:Profile Sync Summary.md`);
 		const doc = await vscode.workspace.openTextDocument(uri);
-		
+
 		const edit = new vscode.WorkspaceEdit();
 		edit.replace(uri, new vscode.Range(0, 0, doc.lineCount, 0), content);
 		await vscode.workspace.applyEdit(edit);
@@ -85,12 +86,12 @@ export class Reporter {
 	}
 
 	private static generateMarkdown(): string {
-		const d = this.data;
+		const d = Reporter.data;
 		const time = d.timestamp.toLocaleTimeString();
-		
+
 		let md = `# Profile Sync Summary\n\n`;
 		md += `**Profile:** \`${d.profileName}\` &nbsp;|&nbsp; **Time:** ${time}\n\n`;
-		md += `**Parents:** ${d.parents.map(p => `\`${p}\``).join(", ") || "None"}\n\n`;
+		md += `**Parents:** ${d.parents.map((p) => `\`${p}\``).join(", ") || "None"}\n\n`;
 		md += `---\n\n`;
 
 		// Extensions
@@ -102,14 +103,16 @@ export class Reporter {
 				md += `### Installed (${d.extensions.added.length})\n\n`;
 				md += `| Extension | Status |\n`;
 				md += `| :--- | :--- |\n`;
-				d.extensions.added.forEach(id => {
+				d.extensions.added.forEach((id) => {
 					md += `| [${id}](command:extension.open?${encodeURIComponent(JSON.stringify([id]))}) | ✅ Installed |\n`;
 				});
 				md += "\n";
 			}
 			if (d.extensions.failed.length > 0) {
 				md += `### Failed (${d.extensions.failed.length})\n\n`;
-				d.extensions.failed.forEach(id => md += `- ❌ ${id}\n`);
+				d.extensions.failed.forEach((id) => {
+					md += `- ❌ ${id}\n`;
+				});
 				md += "\n";
 			}
 		}
@@ -139,9 +142,12 @@ export class Reporter {
 		} else {
 			md += `| Server | Status |\n`;
 			md += `| :--- | :--- |\n`;
-			d.mcp.servers.forEach(s => md += `| **${s}** | ✅ Synced |\n`);
+			d.mcp.servers.forEach((s) => {
+				md += `| **${s}** | ✅ Synced |\n`;
+			});
 			md += "\n";
 		}
+		md += `[Open MCP Config](command:workbench.mcp.openUserMcpJson)\n\n`;
 
 		// Snippets
 		md += `## Snippets\n\n`;
@@ -150,7 +156,9 @@ export class Reporter {
 		} else {
 			md += `| File | Status |\n`;
 			md += `| :--- | :--- |\n`;
-			d.snippets.files.forEach(f => md += `| \`${f}\` | ✅ Synced |\n`);
+			d.snippets.files.forEach((f) => {
+				md += `| \`${f}\` | ✅ Synced |\n`;
+			});
 			md += "\n";
 		}
 		md += `[Open Snippets](command:workbench.action.openSnippets)\n\n`;

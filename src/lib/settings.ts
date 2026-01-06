@@ -2,8 +2,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { Logger } from "./logger.js";
-import { Reporter } from "./reporter.js";
 import { getCurrentProfileName, getProfileMap } from "./profileDiscovery.js";
+import { Reporter } from "./reporter.js";
 import {
 	findTabValue,
 	flattenSettings,
@@ -136,7 +136,10 @@ export async function getInheritedSettings(
 export async function removeInheritedSettingsFromFile(
 	settingsPath: string,
 ): Promise<void> {
-	Logger.info(`Removing inherited settings from \`${settingsPath}\`.`, "Settings");
+	Logger.info(
+		`Removing inherited settings from \`${settingsPath}\`.`,
+		"Settings",
+	);
 
 	// Find the start and end markers:
 	const raw = await readRawSettingsFile(settingsPath);
@@ -272,7 +275,7 @@ export async function applyInheritedSettings(
 		`Found ${totalInheritedSettings} inherited settings for \`${currentProfileName}\` profile.`,
 		"Settings",
 	);
-	
+
 	const config = vscode.workspace.getConfiguration("inheritProfile");
 	const parentProfiles = config.get<string[]>("parents", []);
 	Reporter.trackSettings(totalInheritedSettings, parentProfiles);

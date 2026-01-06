@@ -1,8 +1,8 @@
-import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import * as vscode from "vscode";
-import { getCurrentProfileName, getProfileMap } from "./profileDiscovery.js";
 import { Logger } from "./logger.js";
+import { getCurrentProfileName, getProfileMap } from "./profileDiscovery.js";
 import { Reporter } from "./reporter.js";
 
 export async function syncSnippets(context: vscode.ExtensionContext) {
@@ -27,11 +27,11 @@ export async function syncSnippets(context: vscode.ExtensionContext) {
 	}
 
 	const currentSnippetsDir = path.join(currentProfilePath, "snippets");
-	
+
 	// Ensure snippets directory exists
 	try {
 		await fs.mkdir(currentSnippetsDir, { recursive: true });
-	} catch (e) {
+	} catch (_e) {
 		// ignore
 	}
 
@@ -40,23 +40,25 @@ export async function syncSnippets(context: vscode.ExtensionContext) {
 		if (!parentPath) continue;
 
 		const parentSnippetsDir = path.join(parentPath, "snippets");
-		
+
 		try {
 			const files = await fs.readdir(parentSnippetsDir);
 			for (const file of files) {
 				if (file.endsWith(".json") || file.endsWith(".code-snippets")) {
 					const src = path.join(parentSnippetsDir, file);
 					const dest = path.join(currentSnippetsDir, file);
-					
+
 					// Check if file exists in destination (User override)
 					// Strategy: If user has the same file, we DO NOT overwrite it.
 					// The user requested: "si il y en a un du meme nom dans l'enfant que dans le parent ca le sync juste pas"
-					
+
 					try {
 						await fs.access(dest);
 						// File exists, skip
-						Logger.info(`Snippet '${file}' exists in current profile. Skipping inheritance.`, "Snippets");
-						continue;
+						Logger.info(
+							`Snippet '${file}' exists in current profile. Skipping inheritance.`,
+							"Snippets",
+						);
 					} catch {
 						// File does not exist, copy it
 						await fs.copyFile(src, dest);
@@ -67,8 +69,12 @@ export async function syncSnippets(context: vscode.ExtensionContext) {
 			}
 		} catch (error) {
 			// Parent might not have snippets folder
-			if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-				Logger.error(`Failed to sync snippets from ${parent}`, error, "Snippets");
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+				Logger.error(
+					`Failed to sync snippets from ${parent}`,
+					error,
+					"Snippets",
+				);
 			}
 		}
 	}

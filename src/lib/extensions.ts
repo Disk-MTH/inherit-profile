@@ -72,7 +72,10 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 	}
 
 	const currentProfileName = await getCurrentProfileName(context);
-	Logger.info(`Synchronizing extensions for profile '${currentProfileName}'...`, "Extensions");
+	Logger.info(
+		`Synchronizing extensions for profile '${currentProfileName}'...`,
+		"Extensions",
+	);
 
 	// Get currently installed extensions
 	const currentExtensions = getActiveExtensions();
@@ -96,9 +99,9 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 						await vscode.commands.executeCommand(
 							"workbench.extensions.installExtension",
 							id,
-							{ 
-								donotSync: true, 
-							}
+							{
+								donotSync: true,
+							},
 						);
 						installedIds.add(id.toLowerCase());
 						Reporter.trackExtension(id, "added");
@@ -112,15 +115,12 @@ export async function syncExtensions(context: vscode.ExtensionContext) {
 					// If they were already there, "No changes" is technically correct.
 					// But if the user *just* ran it and it installed them, it should show up.
 					// If the user ran it *again*, it should show "No changes" for extensions.
-					
 					// Wait, the user said: "quand j'ai fait apply sur le child, ca m'a ouvert le markdown, mais il il m'a dis no changes alors qu'il a bien sync ext + settings"
 					// This implies that extensions WERE installed but NOT reported.
 					// This happens if `installedIds.has(id.toLowerCase())` was TRUE initially?
 					// Or if `vscode.commands.executeCommand` finished but `Reporter.trackExtension` wasn't called?
 					// It is awaited.
-					
 					// Maybe `getActiveExtensions()` returns extensions that are currently *installing*? Unlikely.
-					
 					// Let's add a debug log to see what's happening.
 					// Logger.info(`Extension ${id} already installed.`, "Extensions");
 				}

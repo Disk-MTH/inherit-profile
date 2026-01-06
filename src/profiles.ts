@@ -9,13 +9,13 @@ import {
 	getGlobalStoragePath,
 	getProfileMap,
 } from "./lib/profileDiscovery.js";
+import { Reporter } from "./lib/reporter.js";
 import {
 	applyInheritedSettings,
 	removeInheritedSettingsFromFile,
 } from "./lib/settings.js";
 import { syncSnippets } from "./lib/snippets.js";
 import { syncTasks } from "./lib/tasks.js";
-import { Reporter } from "./lib/reporter.js";
 
 /**
  * Updates the inherited settings for the current profile.
@@ -25,12 +25,15 @@ export async function updateCurrentProfileInheritance(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
 	Logger.initialize(context);
-	
+
 	const config = vscode.workspace.getConfiguration("inheritProfile");
 	const parents = config.get<string[]>("parents", []);
-	
+
 	if (parents.length === 0) {
-		Logger.info("No parent profiles configured. Skipping inheritance update.", "Main");
+		Logger.info(
+			"No parent profiles configured. Skipping inheritance update.",
+			"Main",
+		);
 		return;
 	}
 
